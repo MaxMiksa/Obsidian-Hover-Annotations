@@ -1,0 +1,44 @@
+/* 1. 批注文本的基础样式（高亮/下划线） */
+.ob-comment {
+    border-bottom: 2px solid #ff9900; /* 橙色下划线 */
+    background-color: rgba(255, 153, 0, 0.15); /* 轻微背景色 */
+    cursor: help;
+    transition: background-color 0.2s;
+    border-radius: 3px;
+    padding: 0 2px;
+}
+
+.ob-comment:hover {
+    background-color: rgba(255, 153, 0, 0.4);
+}
+
+/* 2. 悬浮弹窗 (Tooltip) 的样式 */
+/* 我们将使用 JS 动态创建这个元素，这是它的皮肤 */
+body .ob-annotation-tooltip {
+    position: absolute;
+    background-color: #222;
+    color: #eee;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1.4;
+    max-width: 300px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 9999; /* 确保在最上层 */
+    pointer-events: none; /* 让鼠标事件穿透，防止闪烁 */
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.2s, transform 0.2s;
+    border: 1px solid #444;
+}
+
+body .ob-annotation-tooltip.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* 3. Live Preview (CodeMirror) 特有样式 */
+/* 用来隐藏 HTML 标签的类 */
+.cm-ob-comment-tag-hide {
+    display: none;
+}
