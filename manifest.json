@@ -1,7 +1,7 @@
 {
 	"id": "simple-html-annotation",
 	"name": "Simple HTML Annotation",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"minAppVersion": "0.15.0",
 	"description": "添加文本批注，鼠标悬浮显示内容，支持阅读模式和实时预览模式。",
 	"author": "Zheyuan (Max) Kong",

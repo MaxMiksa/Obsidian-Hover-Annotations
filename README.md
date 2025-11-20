@@ -1,4 +1,4 @@
-# Obsidian-Simple-HTML-Annotation V1.0.0
+# Obsidian-Simple-HTML-Annotation V1.1.0
 
 这款插件名为 **Simple HTML Annotation**（极简 HTML 批注）： 在Obsidian 中实现**插入后自动隐藏批注内容、鼠标悬停时立即展示批注内容**，同时保持 Markdown 文件的纯文本兼容性及本地保存的安全性。
 
@@ -55,8 +55,8 @@ The plugin is called Simple HTML Annotation: It allows you to **automatically hi
 *   将鼠标悬停在文字上方，即可看到刚才输入的“这里需要进一步查证资料”。
 
 **第三步：修改/删除批注**
-*   **修改**：将光标移动到带下划线的文字中间。此时代码会展开，变成 `<span class="ob-comment" data-note="...">量子力学</span>`。你可以直接修改 `data-note` 引号里的内容，或者修改显示的文本。
-*   **删除**：直接删掉 `<span...>` 和 `</span>` 标签，只保留中间的文字即可。
+*   **修改**：点击高亮的文本（即有批注的文本），然后右键弹出选项菜单栏，点击“编辑批注”，修改内容并确认。
+*   **删除**：点击高亮的文本（即有批注的文本），然后右键弹出选项菜单栏，点击“删除批注”，批注内容将会被删除（对应的文本高亮也将被清除）。
 
 ---
 

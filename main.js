@@ -39,18 +39,9 @@ var AnnotationPlugin = class extends import_obsidian.Plugin {
   async onload() {
     this.addCommand({
       id: "add-annotation-html",
-      name: "\u6DFB\u52A0\u6279\u6CE8 (HTML)",
+      name: "\u6DFB\u52A0\u6279\u6CE8",
       editorCallback: (editor, view) => {
-        const selection = editor.getSelection();
-        if (!selection) {
-          new Notice("\u8BF7\u5148\u9009\u62E9\u4E00\u6BB5\u6587\u672C");
-          return;
-        }
-        new AnnotationModal(this.app, (noteContent) => {
-          const safeNote = noteContent.replace(/"/g, "&quot;");
-          const replacement = `<span class="ob-comment" data-note="${safeNote}">${selection}</span>`;
-          editor.replaceSelection(replacement);
-        }).open();
+        this.handleAddCommand(editor);
       }
     });
     this.registerEditorExtension(livePreviewAnnotationPlugin);
@@ -59,9 +50,7 @@ var AnnotationPlugin = class extends import_obsidian.Plugin {
       const target = evt.target;
       if (target && target.hasClass && target.hasClass("ob-comment")) {
         const note = target.getAttribute("data-note");
-        if (note) {
-          this.showTooltip(evt, note);
-        }
+        if (note) this.showTooltip(evt, note);
       }
     });
     this.registerDomEvent(document, "mouseout", (evt) => {
@@ -70,13 +59,111 @@ var AnnotationPlugin = class extends import_obsidian.Plugin {
         this.hideTooltip();
       }
     });
+    this.registerEvent(
+      this.app.workspace.on("editor-menu", (menu, editor, view) => {
+        this.handleContextMenu(menu, editor);
+      })
+    );
   }
   onunload() {
     if (this.tooltipEl) {
       this.tooltipEl.remove();
     }
   }
-  // --- Tooltip 相关逻辑 ---
+  // --- 核心逻辑区 ---
+  /**
+   * 处理右键菜单逻辑
+   */
+  handleContextMenu(menu, editor) {
+    const existingAnnotation = this.findAnnotationAtCursor(editor);
+    if (existingAnnotation) {
+      menu.addItem((item) => {
+        item.setTitle("\u7F16\u8F91\u6279\u6CE8").setIcon("pencil").onClick(() => {
+          new AnnotationModal(this.app, existingAnnotation.note, (newNote) => {
+            const safeNote = newNote.replace(/"/g, "&quot;");
+            const replacement = `<span class="ob-comment" data-note="${safeNote}">${existingAnnotation.text}</span>`;
+            editor.replaceRange(
+              replacement,
+              { line: existingAnnotation.line, ch: existingAnnotation.start },
+              { line: existingAnnotation.line, ch: existingAnnotation.end }
+            );
+          }).open();
+        });
+      });
+      menu.addItem((item) => {
+        item.setTitle("\u5220\u9664\u6279\u6CE8").setIcon("trash").onClick(() => {
+          editor.replaceRange(
+            existingAnnotation.text,
+            { line: existingAnnotation.line, ch: existingAnnotation.start },
+            { line: existingAnnotation.line, ch: existingAnnotation.end }
+          );
+        });
+      });
+    } else {
+      const selection = editor.getSelection();
+      if (selection && selection.trim().length > 0) {
+        menu.addItem((item) => {
+          item.setTitle("\u6DFB\u52A0\u6279\u6CE8").setIcon("message-square").onClick(() => {
+            this.performAddAnnotation(editor, selection);
+          });
+        });
+      }
+    }
+  }
+  /**
+   * 命令触发的添加逻辑
+   */
+  handleAddCommand(editor) {
+    const selection = editor.getSelection();
+    if (!selection) {
+      new import_obsidian.Notice("\u8BF7\u5148\u9009\u62E9\u4E00\u6BB5\u6587\u672C");
+      return;
+    }
+    if (selection.includes('<span class="ob-comment"')) {
+      new import_obsidian.Notice("\u4E0D\u652F\u6301\u5728\u5DF2\u6709\u6279\u6CE8\u4E0A\u5D4C\u5957\u6279\u6CE8\uFF0C\u8BF7\u5148\u5220\u9664\u65E7\u6279\u6CE8");
+      return;
+    }
+    this.performAddAnnotation(editor, selection);
+  }
+  /**
+   * 执行添加批注动作
+   */
+  performAddAnnotation(editor, selectionText) {
+    new AnnotationModal(this.app, "", (noteContent) => {
+      const safeNote = noteContent.replace(/"/g, "&quot;");
+      const replacement = `<span class="ob-comment" data-note="${safeNote}">${selectionText}</span>`;
+      editor.replaceSelection(replacement);
+    }).open();
+  }
+  /**
+   * [辅助算法] 扫描当前行，判断光标是否位于某个批注 HTML 标签内部
+   */
+  findAnnotationAtCursor(editor) {
+    const cursor = editor.getCursor();
+    const lineText = editor.getLine(cursor.line);
+    COMMENT_REGEX.lastIndex = 0;
+    let match;
+    while ((match = COMMENT_REGEX.exec(lineText)) !== null) {
+      const fullMatch = match[0];
+      const noteContent = match[1];
+      const innerText = match[2];
+      const startIndex = match.index;
+      const endIndex = startIndex + fullMatch.length;
+      if (cursor.ch >= startIndex && cursor.ch <= endIndex) {
+        return {
+          line: cursor.line,
+          start: startIndex,
+          end: endIndex,
+          text: innerText,
+          // 原文
+          note: noteContent
+          // 笔记内容
+        };
+      }
+    }
+    return null;
+  }
+  // --- Tooltip 相关逻辑 (保持不变) ---
   createTooltipElement() {
     this.tooltipEl = document.body.createDiv({ cls: "ob-annotation-tooltip" });
   }
@@ -95,18 +182,21 @@ var AnnotationPlugin = class extends import_obsidian.Plugin {
   }
 };
 var AnnotationModal = class extends import_obsidian.Modal {
-  constructor(app, onSubmit) {
+  constructor(app, defaultValue, onSubmit) {
     super(app);
+    this.defaultValue = defaultValue;
     this.onSubmit = onSubmit;
   }
   onOpen() {
     const { contentEl } = this;
-    contentEl.createEl("h2", { text: "\u8F93\u5165\u6279\u6CE8\u5185\u5BB9" });
+    contentEl.createEl("h2", { text: this.defaultValue ? "\u7F16\u8F91\u6279\u6CE8" : "\u8F93\u5165\u6279\u6CE8\u5185\u5BB9" });
     const inputEl = contentEl.createEl("textarea", {
       cls: "annotation-input",
       attr: { rows: "3", style: "width: 100%; margin-bottom: 10px;" }
     });
+    inputEl.value = this.defaultValue;
     inputEl.focus();
+    if (this.defaultValue) inputEl.select();
     inputEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
@@ -114,6 +204,8 @@ var AnnotationModal = class extends import_obsidian.Modal {
       }
     });
     const btnContainer = contentEl.createDiv({ cls: "modal-button-container" });
+    const cancelBtn = btnContainer.createEl("button", { text: "\u53D6\u6D88" });
+    cancelBtn.addEventListener("click", () => this.close());
     const submitBtn = btnContainer.createEl("button", { text: "\u786E\u5B9A", cls: "mod-cta" });
     submitBtn.addEventListener("click", () => {
       this.submit(inputEl.value);
@@ -159,31 +251,13 @@ var livePreviewAnnotationPlugin = import_view.ViewPlugin.fromClass(class {
       const closingTagFrom = contentTo;
       const closingTagTo = endPos;
       const isCursorInside = cursorFrom >= startPos && cursorFrom <= endPos || cursorTo >= startPos && cursorTo <= endPos;
-      if (isCursorInside) {
-        continue;
-      }
-      builder.add(
-        openingTagFrom,
-        openingTagTo,
-        import_view.Decoration.replace({})
-        // replace为空，即隐藏
-      );
-      builder.add(
-        contentFrom,
-        contentTo,
-        import_view.Decoration.mark({
-          class: "ob-comment",
-          // 使用 CSS 中定义的样式
-          attributes: { "data-note": noteContent }
-          // 把批注内容加上，方便鼠标事件获取
-        })
-      );
-      builder.add(
-        closingTagFrom,
-        closingTagTo,
-        import_view.Decoration.replace({})
-        // replace为空，即隐藏
-      );
+      if (isCursorInside) continue;
+      builder.add(openingTagFrom, openingTagTo, import_view.Decoration.replace({}));
+      builder.add(contentFrom, contentTo, import_view.Decoration.mark({
+        class: "ob-comment",
+        attributes: { "data-note": noteContent }
+      }));
+      builder.add(closingTagFrom, closingTagTo, import_view.Decoration.replace({}));
     }
     return builder.finish();
   }
