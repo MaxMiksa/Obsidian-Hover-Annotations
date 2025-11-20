@@ -7,7 +7,7 @@ The plugin is called Simple HTML Annotation: It allows you to **automatically hi
 ---
 ### ✨ 插件功能速览 (Features)
 
-![插件使用说明](https://github.com/user-attachments/assets/05ab4eae-33ad-4687-b9d0-49426c792ee1)
+![插件使用说明 v1 1 0 gif](https://github.com/user-attachments/assets/0e3bd7f0-c70a-48db-b2d7-f6a814c9a396)
 
 ---
 
