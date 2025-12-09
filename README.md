@@ -1,4 +1,4 @@
-# Obsidian-Simple-HTML-Annotation V1.1.0 | [中文](README_zh.md)
+# Obsidian-Simple-HTML-Annotation | [中文](README_zh.md)
 
 The plugin is called **Simple HTML Annotation**: It allows you to **automatically hide annotation content after insertion and instantly display it upon mouse hover within Obsidian**. At the same time, it maintains the plain text compatibility and secure local storage of Markdown files.
 
