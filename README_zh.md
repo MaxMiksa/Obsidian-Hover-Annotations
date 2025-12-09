@@ -1,6 +1,4 @@
-[For English](README.md)
-
-# Obsidian-Simple-HTML-Annotation V1.1.0
+# Obsidian-Simple-HTML-Annotation V1.1.0 | [English Doc](README.md)
 
 这款插件名为 **Simple HTML Annotation**（极简 HTML 批注）： 在Obsidian 中实现**插入后自动隐藏批注内容、鼠标悬停时立即展示批注内容**，同时保持 Markdown 文件的纯文本兼容性及本地保存的安全性。
 
