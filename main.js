@@ -36,7 +36,7 @@ var AnnotationPlugin = class extends import_obsidian.Plugin {
     super(...arguments);
     this.tooltipEl = null;
   }
-  async onload() {
+  onload() {
     this.addCommand({
       id: "add-annotation-html",
       name: "\u6DFB\u52A0\u6279\u6CE8",
