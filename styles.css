@@ -12,6 +12,33 @@
     background-color: rgba(255, 153, 0, 0.4);
 }
 
+.ob-comment.red {
+    border-bottom-color: #e5484d;
+    background-color: rgba(229, 72, 77, 0.15);
+}
+
+.ob-comment.red:hover {
+    background-color: rgba(229, 72, 77, 0.35);
+}
+
+.ob-comment.green {
+    border-bottom-color: #2f9d62;
+    background-color: rgba(47, 157, 98, 0.15);
+}
+
+.ob-comment.green:hover {
+    background-color: rgba(47, 157, 98, 0.35);
+}
+
+.ob-comment.yellow {
+    border-bottom-color: #e6c229;
+    background-color: rgba(230, 194, 41, 0.18);
+}
+
+.ob-comment.yellow:hover {
+    background-color: rgba(230, 194, 41, 0.4);
+}
+
 /* 2. 悬浮弹窗 (Tooltip) 的样式 */
 /* 我们将使用 JS 动态创建这个元素，这是它的皮肤 */
 body .ob-annotation-tooltip {

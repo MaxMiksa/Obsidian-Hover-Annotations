@@ -30,12 +30,42 @@ module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var import_view = require("@codemirror/view");
 var import_state = require("@codemirror/state");
-var COMMENT_REGEX = /<span class="ob-comment" data-note="([\s\S]*?)">([\s\S]*?)<\/span>/g;
+var COMMENT_REGEX = /<span class="ob-comment(?:\s+([\w-]+))?" data-note="([\s\S]*?)">([\s\S]*?)<\/span>/g;
+var COLOR_OPTIONS = [
+  { value: "", label: "\u9ED8\u8BA4\uFF08\u6A59\u8272\uFF09" },
+  { value: "red", label: "\u7EA2\u8272 \xB7 \u7591\u95EE" },
+  { value: "green", label: "\u7EFF\u8272 \xB7 \u60F3\u6CD5" },
+  { value: "yellow", label: "\u9EC4\u8272 \xB7 \u5F85\u529E" }
+];
+var DEFAULT_COLOR = COLOR_OPTIONS[0].value;
+function buildAnnotationClass(color) {
+  return color ? "ob-comment " + color : "ob-comment";
+}
 function escapeDataNote(note) {
   return note.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/'/g, "&#39;").replace(/`/g, "&#96;").replace(/\r?\n/g, "&#10;");
 }
 function decodeDataNote(note) {
   return note.replace(/&#10;/g, "\n").replace(/&#13;/g, "\r").replace(/&#96;/g, "`").replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&");
+}
+function normalizeAnnotationsInText(text) {
+  COMMENT_REGEX.lastIndex = 0;
+  let result = "";
+  let lastIndex = 0;
+  let changed = false;
+  let match;
+  while ((match = COMMENT_REGEX.exec(text)) !== null) {
+    const fullMatch = match[0];
+    const colorClass = match[1] || "";
+    const rawNote = match[2];
+    const visibleText = match[3];
+    const safeNote = escapeDataNote(decodeDataNote(rawNote));
+    const replacement = `<span class="${buildAnnotationClass(colorClass)}" data-note="${safeNote}">${visibleText}</span>`;
+    result += text.slice(lastIndex, match.index) + replacement;
+    lastIndex = match.index + fullMatch.length;
+    if (replacement !== fullMatch) changed = true;
+  }
+  result += text.slice(lastIndex);
+  return { text: changed ? result : text, changed };
 }
 var AnnotationPlugin = class extends import_obsidian.Plugin {
   constructor() {
@@ -48,6 +78,20 @@ var AnnotationPlugin = class extends import_obsidian.Plugin {
       name: "\u6DFB\u52A0\u6279\u6CE8",
       editorCallback: (editor, view) => {
         this.handleAddCommand(editor);
+      }
+    });
+    this.addCommand({
+      id: "normalize-annotation-data-note-current",
+      name: "\u4FEE\u590D\u5F53\u524D\u6587\u4EF6\u7684\u6279\u6CE8 data-note",
+      editorCallback: async (editor) => {
+        await this.normalizeCurrentFileAnnotations(editor);
+      }
+    });
+    this.addCommand({
+      id: "normalize-annotation-data-note-vault",
+      name: "\u4FEE\u590D\u6240\u6709 Markdown \u6587\u4EF6\u7684\u6279\u6CE8 data-note",
+      callback: async () => {
+        await this.normalizeAllMarkdownFiles();
       }
     });
     this.registerEditorExtension(livePreviewAnnotationPlugin);
@@ -91,9 +135,9 @@ var AnnotationPlugin = class extends import_obsidian.Plugin {
     if (existingAnnotation) {
       menu.addItem((item) => {
         item.setTitle("\u7F16\u8F91\u6279\u6CE8").setIcon("pencil").onClick(() => {
-          new AnnotationModal(this.app, existingAnnotation.note, (newNote) => {
+          new AnnotationModal(this.app, existingAnnotation.note, existingAnnotation.color || DEFAULT_COLOR, (newNote, newColor) => {
             const safeNote = escapeDataNote(newNote);
-            const replacement = `<span class="ob-comment" data-note="${safeNote}">${existingAnnotation.text}</span>`;
+            const replacement = `<span class="${buildAnnotationClass(newColor)}" data-note="${safeNote}">${existingAnnotation.text}</span>`;
             editor.replaceRange(replacement, existingAnnotation.from, existingAnnotation.to);
           }).open();
         });
@@ -133,9 +177,9 @@ var AnnotationPlugin = class extends import_obsidian.Plugin {
    * 执行添加批注动作
    */
   performAddAnnotation(editor, selectionText) {
-    new AnnotationModal(this.app, "", (noteContent) => {
+    new AnnotationModal(this.app, "", DEFAULT_COLOR, (noteContent, colorChoice) => {
       const safeNote = escapeDataNote(noteContent);
-      const replacement = `<span class="ob-comment" data-note="${safeNote}">${selectionText}</span>`;
+      const replacement = `<span class="${buildAnnotationClass(colorChoice)}" data-note="${safeNote}">${selectionText}</span>`;
       editor.replaceSelection(replacement);
     }).open();
   }
@@ -150,8 +194,9 @@ var AnnotationPlugin = class extends import_obsidian.Plugin {
     let match;
     while ((match = COMMENT_REGEX.exec(docText)) !== null) {
       const fullMatch = match[0];
-      const noteContent = match[1];
-      const innerText = match[2];
+      const colorClass = match[1] || "";
+      const noteContent = match[2];
+      const innerText = match[3];
       const startOffset = match.index;
       const endOffset = startOffset + fullMatch.length;
       if (cursorOffset >= startOffset && cursorOffset <= endOffset) {
@@ -160,8 +205,9 @@ var AnnotationPlugin = class extends import_obsidian.Plugin {
           to: editor.offsetToPos(endOffset),
           text: innerText,
           // 原文
-          note: decodeDataNote(noteContent)
+          note: decodeDataNote(noteContent),
           // 笔记内容（解码后）
+          color: colorClass
         };
       }
     }
@@ -184,11 +230,47 @@ var AnnotationPlugin = class extends import_obsidian.Plugin {
     if (!this.tooltipEl) return;
     this.tooltipEl.removeClass("is-visible");
   }
+  /**
+   * 修复当前文件中所有批注的 data-note（处理旧版直接换行/特殊字符未转义的情况）
+   */
+  async normalizeCurrentFileAnnotations(editor) {
+    const docText = editor.getValue();
+    const { text, changed } = normalizeAnnotationsInText(docText);
+    if (!changed) {
+      new import_obsidian.Notice("\u672A\u53D1\u73B0\u9700\u8981\u4FEE\u590D\u7684\u6279\u6CE8");
+      return;
+    }
+    const cursor = editor.getCursor();
+    editor.setValue(text);
+    editor.setCursor(cursor);
+    new import_obsidian.Notice("\u5F53\u524D\u6587\u4EF6\u7684\u6279\u6CE8\u5DF2\u8F6C\u6362\u4E3A\u5B89\u5168\u683C\u5F0F");
+  }
+  /**
+   * 扫描并修复库内所有 Markdown 文件的批注 data-note
+   */
+  async normalizeAllMarkdownFiles() {
+    const files = this.app.vault.getMarkdownFiles();
+    let fixedCount = 0;
+    for (const file of files) {
+      const original = await this.app.vault.read(file);
+      const { text, changed } = normalizeAnnotationsInText(original);
+      if (!changed) continue;
+      await this.app.vault.modify(file, text);
+      fixedCount++;
+    }
+    if (fixedCount === 0) {
+      new import_obsidian.Notice("\u672A\u53D1\u73B0\u9700\u8981\u4FEE\u590D\u7684\u6279\u6CE8");
+    } else {
+      new import_obsidian.Notice(`\u5DF2\u4FEE\u590D ${fixedCount} \u4E2A Markdown \u6587\u4EF6\u7684\u6279\u6CE8`);
+    }
+  }
 };
 var AnnotationModal = class extends import_obsidian.Modal {
-  constructor(app, defaultValue, onSubmit) {
+  constructor(app, defaultValue, defaultColor, onSubmit) {
     super(app);
+    this.colorSelectEl = null;
     this.defaultValue = defaultValue;
+    this.defaultColor = defaultColor;
     this.onSubmit = onSubmit;
   }
   onOpen() {
@@ -201,6 +283,18 @@ var AnnotationModal = class extends import_obsidian.Modal {
     inputEl.value = this.defaultValue;
     inputEl.focus();
     if (this.defaultValue) inputEl.select();
+    const colorWrapper = contentEl.createDiv({ cls: "annotation-color-field" });
+    colorWrapper.createEl("div", { text: "\u6279\u6CE8\u989C\u8272", cls: "setting-item-name" });
+    const selectEl = colorWrapper.createEl("select", { attr: { style: "width: 100%; margin-bottom: 10px;" } });
+    const colorOptions = [...COLOR_OPTIONS];
+    if (this.defaultColor && !colorOptions.some((opt) => opt.value === this.defaultColor)) {
+      colorOptions.push({ value: this.defaultColor, label: `\u4FDD\u7559\u539F\u6837\uFF08${this.defaultColor}\uFF09` });
+    }
+    colorOptions.forEach((opt) => {
+      const optionEl = selectEl.createEl("option", { text: opt.label, value: opt.value });
+      if (opt.value === this.defaultColor) optionEl.selected = true;
+    });
+    this.colorSelectEl = selectEl;
     inputEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && e.shiftKey) {
         return;
@@ -219,7 +313,9 @@ var AnnotationModal = class extends import_obsidian.Modal {
     });
   }
   submit(value) {
-    this.onSubmit(value);
+    var _a, _b;
+    const chosenColor = (_b = (_a = this.colorSelectEl) == null ? void 0 : _a.value) != null ? _b : DEFAULT_COLOR;
+    this.onSubmit(value, chosenColor);
     this.close();
   }
   onClose() {
@@ -246,8 +342,9 @@ var livePreviewAnnotationPlugin = import_view.ViewPlugin.fromClass(class {
     COMMENT_REGEX.lastIndex = 0;
     while ((match = COMMENT_REGEX.exec(text)) !== null) {
       const fullMatch = match[0];
-      const noteContent = match[1];
-      const visibleText = match[2];
+      const colorClass = match[1] || "";
+      const noteContent = match[2];
+      const visibleText = match[3];
       const noteText = decodeDataNote(noteContent);
       const startPos = match.index;
       const endPos = startPos + fullMatch.length;
@@ -262,7 +359,7 @@ var livePreviewAnnotationPlugin = import_view.ViewPlugin.fromClass(class {
       if (isCursorInside) continue;
       builder.add(openingTagFrom, openingTagTo, import_view.Decoration.replace({}));
       builder.add(contentFrom, contentTo, import_view.Decoration.mark({
-        class: "ob-comment",
+        class: buildAnnotationClass(colorClass),
         attributes: { "data-note": noteText }
       }));
       builder.add(closingTagFrom, closingTagTo, import_view.Decoration.replace({}));

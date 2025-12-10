@@ -1,7 +1,7 @@
 {
 	"id": "simple-html-annotation",
 	"name": "Simple HTML Annotation",
-	"version": "1.1.0",
+	"version": "1.2.0",
 	"minAppVersion": "0.15.0",
 	"description": "Enable text annotations, display content upon mouse hover (or: show hover text/tooltips), and support both Reading Mode and Real-time Preview Mode.",
 	"author": "Zheyuan (Max) Kong",

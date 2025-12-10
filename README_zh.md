@@ -22,6 +22,8 @@ The plugin is called Simple HTML Annotation: It allows you to **automatically hi
     *   只有当光标移入批注文本内部时，源码才会展开，方便修改。
 *   **阅读模式支持**：在阅读视图同样支持悬浮显示批注。
 *   **数据安全**：批注以标准 HTML `<span>` 标签存储在文件中，即使卸载插件也不会丢失。
+*   **批注修复能力**：新增 `normalizeAnnotationsInText`，以及两条命令（“修复当前文件的批注 data-note”“修复所有 Markdown 文件的批注 data-note”），可一键把旧版遗留的原始换行/特殊字符重编码为安全格式，避免 data-note 换行导致 Obsidian 的 Markdown 解析挂掉。
+*   **多彩批注**：在批注弹窗选择红/绿/黄等颜色，插入的 HTML 会带上 `class="ob-comment red"` 之类的 class，对应不同的高亮语义。
 
 <img width="600" height="250" alt="image" src="https://github.com/user-attachments/assets/db8f682d-3e7f-45b8-bcd2-5ff41665edbc" />
 
@@ -76,9 +78,9 @@ The plugin is called Simple HTML Annotation: It allows you to **automatically hi
 *   开发一个侧边栏面板，列出当前文档中**所有批注**。
 *   点击侧边栏的某条批注，编辑器自动滚动跳转到对应位置（类似 Word 的审阅窗格）。
 
-- [ ] 4. 多彩批注
-*   允许用户选择不同的批注颜色（如：红色代表疑问，绿色代表想法，黄色代表待办）。
-*   实现方式：在 HTML 中添加不同的 class，如 `class="ob-comment red"`。
+- [x] 4. 多彩批注
+*   允许用户在弹窗中选择不同的批注颜色（如：红色代表疑问，绿色代表想法，黄色代表待办）。
+*   实现方式：在 HTML 中添加不同的 class，如 `class=\"ob-comment red\"`。
 
 - [ ] 5. 图标模式
 *   在设置里增加一个开关：选择“下划线模式”还是“文末图标模式”。

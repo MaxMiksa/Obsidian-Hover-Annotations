@@ -19,6 +19,8 @@ The plugin is called **Simple HTML Annotation**: It allows you to **automaticall
     *   The source code only expands automatically when the cursor moves inside the annotated text, allowing for easy modification.
 *   **Reading Mode Support**: Hover display is also supported in **Reading View**.
 *   **Data Security**: All annotations are stored in the document using standard HTML `<span>` tags. Even if you uninstall the plugin, the annotation content remains safely within the document source code and will not be lost.
+*   **Annotation Repair Utilities**: Added `normalizeAnnotationsInText` and two commands (“Fix annotations in current file” and “Fix annotations in all Markdown files”) to re-encode legacy data-note newlines/special characters into a safe format, preventing Obsidian Markdown parsing from breaking.
+*   **Color-Coded Annotations**: Pick a color (red/green/yellow) in the popup; the inserted span gets classes like `class="ob-comment red"` so the highlight matches your intent.
 
 <img width="600" height="250" alt="image" src="https://github.com/user-attachments/assets/db8f682d-3e7f-45b8-bcd2-5ff41665edbc" />
 
@@ -73,9 +75,9 @@ Alternatively, if you prefer not to use a shortcut:
 *   Develop a sidebar panel that lists **all annotations** in the current document.
 *   Clicking an annotation in the sidebar automatically scrolls the editor to the corresponding location (similar to the Review pane in Word).
 
-- [ ] 4. Multi-Color Annotations
-*   Allow users to select different annotation colors (e.g., Red for questions, Green for ideas, Yellow for tasks).
-*   Implementation: Add different classes to the HTML, such as `class="ob-comment red"`.
+- [x] 4. Multi-Color Annotations
+*   Allow users to select different annotation colors (e.g., Red for questions, Green for ideas, Yellow for tasks) directly in the popup.
+*   Implementation: Adds different classes to the HTML, such as `class="ob-comment red"`.
 
 - [ ] 5. Icon Mode
 *   Add a setting switch: choose between "Underline Mode" or "End-of-Text Icon Mode."

@@ -1,9 +1,24 @@
-import { App, Editor, MarkdownView, Modal, Plugin, Menu, Notice } from 'obsidian';
+﻿import { App, Editor, MarkdownView, Modal, Plugin, Menu, Notice } from 'obsidian';
 import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate } from "@codemirror/view";
 import { RangeSetBuilder } from "@codemirror/state";
 
-// 定义 HTML 标签的正则结构 (支持多行)
-const COMMENT_REGEX = /<span class="ob-comment" data-note="([\s\S]*?)">([\s\S]*?)<\/span>/g;
+type AnnotationColor = string;
+
+// 定义 HTML 标签的正则结构 (支持多行 + 颜色 class)
+const COMMENT_REGEX = /<span class="ob-comment(?:\s+([\w-]+))?" data-note="([\s\S]*?)">([\s\S]*?)<\/span>/g;
+
+const COLOR_OPTIONS: { value: AnnotationColor; label: string }[] = [
+	{ value: "", label: "默认（橙色）" },
+	{ value: "red", label: "红色 · 疑问" },
+	{ value: "green", label: "绿色 · 想法" },
+	{ value: "yellow", label: "黄色 · 待办" },
+];
+
+const DEFAULT_COLOR: AnnotationColor = COLOR_OPTIONS[0].value;
+
+function buildAnnotationClass(color: AnnotationColor): string {
+	return color ? "ob-comment " + color : "ob-comment";
+}
 
 // 软性层通用：安全地将手挂内容存入 HTML data-note
 function escapeDataNote(note: string): string {
@@ -30,6 +45,32 @@ function decodeDataNote(note: string): string {
 		.replace(/&amp;/g, "&");
 }
 
+// 校验并标准化批注的 data-note，避免旧版原始换行/特殊字符破坏 HTML
+function normalizeAnnotationsInText(text: string): { text: string; changed: boolean } {
+	COMMENT_REGEX.lastIndex = 0;
+	let result = "";
+	let lastIndex = 0;
+	let changed = false;
+	let match;
+
+	while ((match = COMMENT_REGEX.exec(text)) !== null) {
+		const fullMatch = match[0];
+		const colorClass = match[1] || "";
+		const rawNote = match[2];
+		const visibleText = match[3];
+
+		const safeNote = escapeDataNote(decodeDataNote(rawNote));
+		const replacement = `<span class="${buildAnnotationClass(colorClass)}" data-note="${safeNote}">${visibleText}</span>`;
+
+		result += text.slice(lastIndex, match.index) + replacement;
+		lastIndex = match.index + fullMatch.length;
+		if (replacement !== fullMatch) changed = true;
+	}
+
+	result += text.slice(lastIndex);
+	return { text: changed ? result : text, changed };
+}
+
 export default class AnnotationPlugin extends Plugin {
 	tooltipEl: HTMLElement | null = null;
 
@@ -40,6 +81,24 @@ export default class AnnotationPlugin extends Plugin {
 			name: '添加批注',
 			editorCallback: (editor: Editor, view: MarkdownView) => {
 				this.handleAddCommand(editor);
+			}
+		});
+
+		// 修复当前文件的批注 data-note 格式
+		this.addCommand({
+			id: 'normalize-annotation-data-note-current',
+			name: '修复当前文件的批注 data-note',
+			editorCallback: async (editor: Editor) => {
+				await this.normalizeCurrentFileAnnotations(editor);
+			}
+		});
+
+		// 修复全库所有 Markdown 文件的批注 data-note
+		this.addCommand({
+			id: 'normalize-annotation-data-note-vault',
+			name: '修复所有 Markdown 文件的批注 data-note',
+			callback: async () => {
+				await this.normalizeAllMarkdownFiles();
 			}
 		});
 
@@ -106,10 +165,10 @@ export default class AnnotationPlugin extends Plugin {
 					.setIcon("pencil")
 					.onClick(() => {
 						// 打开弹窗，传入原有的笔记内容
-						new AnnotationModal(this.app, existingAnnotation.note, (newNote) => {
+						new AnnotationModal(this.app, existingAnnotation.note, existingAnnotation.color || DEFAULT_COLOR, (newNote, newColor) => {
 							const safeNote = escapeDataNote(newNote);
 							// 重组 HTML，保持原文文本不变
-							const replacement = `<span class="ob-comment" data-note="${safeNote}">${existingAnnotation.text}</span>`;
+							const replacement = `<span class="${buildAnnotationClass(newColor)}" data-note="${safeNote}">${existingAnnotation.text}</span>`;
 							
 							// 精确替换范围
 							editor.replaceRange(replacement, existingAnnotation.from, existingAnnotation.to);
@@ -165,9 +224,9 @@ export default class AnnotationPlugin extends Plugin {
 	 * 执行添加批注动作
 	 */
 	performAddAnnotation(editor: Editor, selectionText: string) {
-		new AnnotationModal(this.app, "", (noteContent) => {
+		new AnnotationModal(this.app, "", DEFAULT_COLOR, (noteContent, colorChoice) => {
 			const safeNote = escapeDataNote(noteContent);
-			const replacement = `<span class="ob-comment" data-note="${safeNote}">${selectionText}</span>`;
+			const replacement = `<span class="${buildAnnotationClass(colorChoice)}" data-note="${safeNote}">${selectionText}</span>`;
 			editor.replaceSelection(replacement);
 		}).open();
 	}
@@ -187,8 +246,9 @@ export default class AnnotationPlugin extends Plugin {
 		// 遍历全文所有的批注
 		while ((match = COMMENT_REGEX.exec(docText)) !== null) {
 			const fullMatch = match[0];    // 完整的 <span...>text</span>
-			const noteContent = match[1];  // data-note="..."
-			const innerText = match[2];    // <span>包裹的文本</span>
+			const colorClass = match[1] || "";
+			const noteContent = match[2];  // data-note="..."
+			const innerText = match[3];    // <span>包裹的文本</span>
 			
 			const startOffset = match.index;
 			const endOffset = startOffset + fullMatch.length;
@@ -199,7 +259,8 @@ export default class AnnotationPlugin extends Plugin {
 					from: editor.offsetToPos(startOffset),
 					to: editor.offsetToPos(endOffset),
 					text: innerText, // 原文
-					note: decodeDataNote(noteContent) // 笔记内容（解码后）
+					note: decodeDataNote(noteContent), // 笔记内容（解码后）
+					color: colorClass
 				};
 			}
 		}
@@ -225,17 +286,61 @@ export default class AnnotationPlugin extends Plugin {
 		if (!this.tooltipEl) return;
 		this.tooltipEl.removeClass('is-visible');
 	}
+
+	/**
+	 * 修复当前文件中所有批注的 data-note（处理旧版直接换行/特殊字符未转义的情况）
+	 */
+	private async normalizeCurrentFileAnnotations(editor: Editor) {
+		const docText = editor.getValue();
+		const { text, changed } = normalizeAnnotationsInText(docText);
+
+		if (!changed) {
+			new Notice("未发现需要修复的批注");
+			return;
+		}
+
+		const cursor = editor.getCursor();
+		editor.setValue(text);
+		editor.setCursor(cursor);
+		new Notice("当前文件的批注已转换为安全格式");
+	}
+
+	/**
+	 * 扫描并修复库内所有 Markdown 文件的批注 data-note
+	 */
+	private async normalizeAllMarkdownFiles() {
+		const files = this.app.vault.getMarkdownFiles();
+		let fixedCount = 0;
+
+		for (const file of files) {
+			const original = await this.app.vault.read(file);
+			const { text, changed } = normalizeAnnotationsInText(original);
+			if (!changed) continue;
+
+			await this.app.vault.modify(file, text);
+			fixedCount++;
+		}
+
+		if (fixedCount === 0) {
+			new Notice("未发现需要修复的批注");
+		} else {
+			new Notice(`已修复 ${fixedCount} 个 Markdown 文件的批注`);
+		}
+	}
 }
 
-// --- 弹窗输入框类 (升级：支持默认值) ---
+// --- 弹窗输入框类 (升级：支持默认值 + 颜色选择) ---
 class AnnotationModal extends Modal {
 	result: string;
 	defaultValue: string;
-	onSubmit: (result: string) => void;
+	defaultColor: AnnotationColor;
+	colorSelectEl: HTMLSelectElement | null = null;
+	onSubmit: (result: string, color: AnnotationColor) => void;
 
-	constructor(app: App, defaultValue: string, onSubmit: (result: string) => void) {
+	constructor(app: App, defaultValue: string, defaultColor: AnnotationColor, onSubmit: (result: string, color: AnnotationColor) => void) {
 		super(app);
 		this.defaultValue = defaultValue;
+		this.defaultColor = defaultColor;
 		this.onSubmit = onSubmit;
 	}
 
@@ -253,6 +358,22 @@ class AnnotationModal extends Modal {
 		inputEl.focus();
 		// 如果是编辑模式，全选文本方便修改
 		if (this.defaultValue) inputEl.select();
+
+		const colorWrapper = contentEl.createDiv({ cls: "annotation-color-field" });
+		colorWrapper.createEl("div", { text: "批注颜色", cls: "setting-item-name" });
+		const selectEl = colorWrapper.createEl("select", { attr: { style: "width: 100%; margin-bottom: 10px;" } });
+
+		const colorOptions = [...COLOR_OPTIONS];
+		if (this.defaultColor && !colorOptions.some(opt => opt.value === this.defaultColor)) {
+			colorOptions.push({ value: this.defaultColor, label: `保留原样（${this.defaultColor}）` });
+		}
+
+		colorOptions.forEach(opt => {
+			const optionEl = selectEl.createEl("option", { text: opt.label, value: opt.value });
+			if (opt.value === this.defaultColor) optionEl.selected = true;
+		});
+
+		this.colorSelectEl = selectEl as HTMLSelectElement;
 
 		inputEl.addEventListener("keydown", (e) => {
 			if (e.key === "Enter" && e.shiftKey) {
@@ -278,7 +399,8 @@ class AnnotationModal extends Modal {
 	}
 
 	submit(value: string) {
-		this.onSubmit(value);
+		const chosenColor = this.colorSelectEl?.value ?? DEFAULT_COLOR;
+		this.onSubmit(value, chosenColor);
 		this.close();
 	}
 
@@ -314,8 +436,9 @@ const livePreviewAnnotationPlugin = ViewPlugin.fromClass(class {
 
 		while ((match = COMMENT_REGEX.exec(text)) !== null) {
 			const fullMatch = match[0];
-			const noteContent = match[1];
-			const visibleText = match[2];
+			const colorClass = match[1] || "";
+			const noteContent = match[2];
+			const visibleText = match[3];
 			const noteText = decodeDataNote(noteContent);
 			
 			const startPos = match.index;
@@ -336,7 +459,7 @@ const livePreviewAnnotationPlugin = ViewPlugin.fromClass(class {
 
 			builder.add(openingTagFrom, openingTagTo, Decoration.replace({}));
 			builder.add(contentFrom, contentTo, Decoration.mark({
-				class: "ob-comment",
+				class: buildAnnotationClass(colorClass),
 				attributes: { "data-note": noteText }
 			}));
 			builder.add(closingTagFrom, closingTagTo, Decoration.replace({}));
