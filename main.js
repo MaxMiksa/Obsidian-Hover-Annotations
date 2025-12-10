@@ -30,7 +30,13 @@ module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var import_view = require("@codemirror/view");
 var import_state = require("@codemirror/state");
-var COMMENT_REGEX = /<span class="ob-comment" data-note="(.*?)">(.*?)<\/span>/g;
+var COMMENT_REGEX = /<span class="ob-comment" data-note="([\s\S]*?)">([\s\S]*?)<\/span>/g;
+function escapeDataNote(note) {
+  return note.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/'/g, "&#39;").replace(/`/g, "&#96;").replace(/\r?\n/g, "&#10;");
+}
+function decodeDataNote(note) {
+  return note.replace(/&#10;/g, "\n").replace(/&#13;/g, "\r").replace(/&#96;/g, "`").replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&");
+}
 var AnnotationPlugin = class extends import_obsidian.Plugin {
   constructor() {
     super(...arguments);
@@ -59,6 +65,12 @@ var AnnotationPlugin = class extends import_obsidian.Plugin {
         this.hideTooltip();
       }
     });
+    this.registerDomEvent(document, "mousedown", () => {
+      this.hideTooltip();
+    });
+    this.registerDomEvent(document, "keydown", () => {
+      this.hideTooltip();
+    });
     this.registerEvent(
       this.app.workspace.on("editor-menu", (menu, editor, view) => {
         this.handleContextMenu(menu, editor);
@@ -80,23 +92,15 @@ var AnnotationPlugin = class extends import_obsidian.Plugin {
       menu.addItem((item) => {
         item.setTitle("\u7F16\u8F91\u6279\u6CE8").setIcon("pencil").onClick(() => {
           new AnnotationModal(this.app, existingAnnotation.note, (newNote) => {
-            const safeNote = newNote.replace(/"/g, "&quot;");
+            const safeNote = escapeDataNote(newNote);
             const replacement = `<span class="ob-comment" data-note="${safeNote}">${existingAnnotation.text}</span>`;
-            editor.replaceRange(
-              replacement,
-              { line: existingAnnotation.line, ch: existingAnnotation.start },
-              { line: existingAnnotation.line, ch: existingAnnotation.end }
-            );
+            editor.replaceRange(replacement, existingAnnotation.from, existingAnnotation.to);
           }).open();
         });
       });
       menu.addItem((item) => {
         item.setTitle("\u5220\u9664\u6279\u6CE8").setIcon("trash").onClick(() => {
-          editor.replaceRange(
-            existingAnnotation.text,
-            { line: existingAnnotation.line, ch: existingAnnotation.start },
-            { line: existingAnnotation.line, ch: existingAnnotation.end }
-          );
+          editor.replaceRange(existingAnnotation.text, existingAnnotation.from, existingAnnotation.to);
         });
       });
     } else {
@@ -130,34 +134,34 @@ var AnnotationPlugin = class extends import_obsidian.Plugin {
    */
   performAddAnnotation(editor, selectionText) {
     new AnnotationModal(this.app, "", (noteContent) => {
-      const safeNote = noteContent.replace(/"/g, "&quot;");
+      const safeNote = escapeDataNote(noteContent);
       const replacement = `<span class="ob-comment" data-note="${safeNote}">${selectionText}</span>`;
       editor.replaceSelection(replacement);
     }).open();
   }
   /**
-   * [辅助算法] 扫描当前行，判断光标是否位于某个批注 HTML 标签内部
+   * [辅助算法] 扫描全文，判断光标是否位于某个批注 HTML 标签内部
    */
   findAnnotationAtCursor(editor) {
     const cursor = editor.getCursor();
-    const lineText = editor.getLine(cursor.line);
+    const cursorOffset = editor.posToOffset(cursor);
+    const docText = editor.getValue();
     COMMENT_REGEX.lastIndex = 0;
     let match;
-    while ((match = COMMENT_REGEX.exec(lineText)) !== null) {
+    while ((match = COMMENT_REGEX.exec(docText)) !== null) {
       const fullMatch = match[0];
       const noteContent = match[1];
       const innerText = match[2];
-      const startIndex = match.index;
-      const endIndex = startIndex + fullMatch.length;
-      if (cursor.ch >= startIndex && cursor.ch <= endIndex) {
+      const startOffset = match.index;
+      const endOffset = startOffset + fullMatch.length;
+      if (cursorOffset >= startOffset && cursorOffset <= endOffset) {
         return {
-          line: cursor.line,
-          start: startIndex,
-          end: endIndex,
+          from: editor.offsetToPos(startOffset),
+          to: editor.offsetToPos(endOffset),
           text: innerText,
           // 原文
-          note: noteContent
-          // 笔记内容
+          note: decodeDataNote(noteContent)
+          // 笔记内容（解码后）
         };
       }
     }
@@ -198,7 +202,10 @@ var AnnotationModal = class extends import_obsidian.Modal {
     inputEl.focus();
     if (this.defaultValue) inputEl.select();
     inputEl.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      if (e.key === "Enter" && e.shiftKey) {
+        return;
+      }
+      if (e.key === "Enter") {
         e.preventDefault();
         this.submit(inputEl.value);
       }
@@ -241,6 +248,7 @@ var livePreviewAnnotationPlugin = import_view.ViewPlugin.fromClass(class {
       const fullMatch = match[0];
       const noteContent = match[1];
       const visibleText = match[2];
+      const noteText = decodeDataNote(noteContent);
       const startPos = match.index;
       const endPos = startPos + fullMatch.length;
       const openingTagLength = fullMatch.indexOf(">") + 1;
@@ -255,7 +263,7 @@ var livePreviewAnnotationPlugin = import_view.ViewPlugin.fromClass(class {
       builder.add(openingTagFrom, openingTagTo, import_view.Decoration.replace({}));
       builder.add(contentFrom, contentTo, import_view.Decoration.mark({
         class: "ob-comment",
-        attributes: { "data-note": noteContent }
+        attributes: { "data-note": noteText }
       }));
       builder.add(closingTagFrom, closingTagTo, import_view.Decoration.replace({}));
     }

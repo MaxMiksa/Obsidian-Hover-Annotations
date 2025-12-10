@@ -2,8 +2,33 @@ import { App, Editor, MarkdownView, Modal, Plugin, Menu, Notice } from 'obsidian
 import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate } from "@codemirror/view";
 import { RangeSetBuilder } from "@codemirror/state";
 
-// 定义 HTML 标签的正则结构
-const COMMENT_REGEX = /<span class="ob-comment" data-note="(.*?)">(.*?)<\/span>/g;
+// 定义 HTML 标签的正则结构 (支持多行)
+const COMMENT_REGEX = /<span class="ob-comment" data-note="([\s\S]*?)">([\s\S]*?)<\/span>/g;
+
+// 软性层通用：安全地将手挂内容存入 HTML data-note
+function escapeDataNote(note: string): string {
+	return note
+		.replace(/&/g, "&amp;")
+		.replace(/"/g, "&quot;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/'/g, "&#39;")
+		.replace(/`/g, "&#96;")
+		.replace(/\r?\n/g, "&#10;");
+}
+
+// 解码 data-note 内的常见 HTML 安全转义
+function decodeDataNote(note: string): string {
+	return note
+		.replace(/&#10;/g, "\n")
+		.replace(/&#13;/g, "\r")
+		.replace(/&#96;/g, "`")
+		.replace(/&#39;/g, "'")
+		.replace(/&quot;/g, "\"")
+		.replace(/&gt;/g, ">")
+		.replace(/&lt;/g, "<")
+		.replace(/&amp;/g, "&");
+}
 
 export default class AnnotationPlugin extends Plugin {
 	tooltipEl: HTMLElement | null = null;
@@ -40,6 +65,14 @@ export default class AnnotationPlugin extends Plugin {
 			}
 		});
 
+		// 额外的隐藏触发：点击任意鼠标键 / 任意键盘按键
+		this.registerDomEvent(document, 'mousedown', () => {
+			this.hideTooltip();
+		});
+		this.registerDomEvent(document, 'keydown', () => {
+			this.hideTooltip();
+		});
+
 		// 5. [新增] 注册右键菜单事件
 		this.registerEvent(
 			this.app.workspace.on("editor-menu", (menu: Menu, editor: Editor, view: MarkdownView) => {
@@ -74,16 +107,12 @@ export default class AnnotationPlugin extends Plugin {
 					.onClick(() => {
 						// 打开弹窗，传入原有的笔记内容
 						new AnnotationModal(this.app, existingAnnotation.note, (newNote) => {
-							const safeNote = newNote.replace(/"/g, '&quot;');
+							const safeNote = escapeDataNote(newNote);
 							// 重组 HTML，保持原文文本不变
 							const replacement = `<span class="ob-comment" data-note="${safeNote}">${existingAnnotation.text}</span>`;
 							
 							// 精确替换范围
-							editor.replaceRange(
-								replacement,
-								{ line: existingAnnotation.line, ch: existingAnnotation.start },
-								{ line: existingAnnotation.line, ch: existingAnnotation.end }
-							);
+							editor.replaceRange(replacement, existingAnnotation.from, existingAnnotation.to);
 						}).open();
 					});
 			});
@@ -95,11 +124,7 @@ export default class AnnotationPlugin extends Plugin {
 					.setIcon("trash")
 					.onClick(() => {
 						// 直接用纯文本替换掉 HTML 标签
-						editor.replaceRange(
-							existingAnnotation.text,
-							{ line: existingAnnotation.line, ch: existingAnnotation.start },
-							{ line: existingAnnotation.line, ch: existingAnnotation.end }
-						);
+						editor.replaceRange(existingAnnotation.text, existingAnnotation.from, existingAnnotation.to);
 					});
 			});
 
@@ -141,41 +166,40 @@ export default class AnnotationPlugin extends Plugin {
 	 */
 	performAddAnnotation(editor: Editor, selectionText: string) {
 		new AnnotationModal(this.app, "", (noteContent) => {
-			const safeNote = noteContent.replace(/"/g, '&quot;');
+			const safeNote = escapeDataNote(noteContent);
 			const replacement = `<span class="ob-comment" data-note="${safeNote}">${selectionText}</span>`;
 			editor.replaceSelection(replacement);
 		}).open();
 	}
 
 	/**
-	 * [辅助算法] 扫描当前行，判断光标是否位于某个批注 HTML 标签内部
+	 * [辅助算法] 扫描全文，判断光标是否位于某个批注 HTML 标签内部
 	 */
 	findAnnotationAtCursor(editor: Editor) {
 		const cursor = editor.getCursor();
-		const lineText = editor.getLine(cursor.line);
-		
+		const cursorOffset = editor.posToOffset(cursor);
+		const docText = editor.getValue();
+
 		// 重置正则索引
 		COMMENT_REGEX.lastIndex = 0;
 		let match;
 
-		// 遍历这一行所有的批注
-		while ((match = COMMENT_REGEX.exec(lineText)) !== null) {
+		// 遍历全文所有的批注
+		while ((match = COMMENT_REGEX.exec(docText)) !== null) {
 			const fullMatch = match[0];    // 完整的 <span...>text</span>
 			const noteContent = match[1];  // data-note="..."
 			const innerText = match[2];    // <span>包裹的文本</span>
 			
-			const startIndex = match.index;
-			const endIndex = startIndex + fullMatch.length;
+			const startOffset = match.index;
+			const endOffset = startOffset + fullMatch.length;
 
 			// 判断光标位置是否在这个范围内
-			// 我们放宽一点条件，只要触碰到边缘也算
-			if (cursor.ch >= startIndex && cursor.ch <= endIndex) {
+			if (cursorOffset >= startOffset && cursorOffset <= endOffset) {
 				return {
-					line: cursor.line,
-					start: startIndex,
-					end: endIndex,
+					from: editor.offsetToPos(startOffset),
+					to: editor.offsetToPos(endOffset),
 					text: innerText, // 原文
-					note: noteContent // 笔记内容
+					note: decodeDataNote(noteContent) // 笔记内容（解码后）
 				};
 			}
 		}
@@ -231,7 +255,11 @@ class AnnotationModal extends Modal {
 		if (this.defaultValue) inputEl.select();
 
 		inputEl.addEventListener("keydown", (e) => {
-			if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+			if (e.key === "Enter" && e.shiftKey) {
+				// Shift + Enter -> 换行
+				return;
+			}
+			if (e.key === "Enter") {
 				e.preventDefault();
 				this.submit(inputEl.value);
 			}
@@ -288,6 +316,7 @@ const livePreviewAnnotationPlugin = ViewPlugin.fromClass(class {
 			const fullMatch = match[0];
 			const noteContent = match[1];
 			const visibleText = match[2];
+			const noteText = decodeDataNote(noteContent);
 			
 			const startPos = match.index;
 			const endPos = startPos + fullMatch.length;
@@ -308,7 +337,7 @@ const livePreviewAnnotationPlugin = ViewPlugin.fromClass(class {
 			builder.add(openingTagFrom, openingTagTo, Decoration.replace({}));
 			builder.add(contentFrom, contentTo, Decoration.mark({
 				class: "ob-comment",
-				attributes: { "data-note": noteContent }
+				attributes: { "data-note": noteText }
 			}));
 			builder.add(closingTagFrom, closingTagTo, Decoration.replace({}));
 		}

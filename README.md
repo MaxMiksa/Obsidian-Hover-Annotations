@@ -1,4 +1,5 @@
 # Obsidian-Simple-HTML-Annotation | [中文](README_zh.md)
+![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg) ![Language: TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6.svg) ![Obsidian API](https://img.shields.io/badge/Obsidian-API-4B3CFA.svg) ![Build: esbuild](https://img.shields.io/badge/build-esbuild-FFCF00.svg)
 
 The plugin is called **Simple HTML Annotation**: It allows you to **automatically hide annotation content after insertion and instantly display it upon mouse hover within Obsidian**. At the same time, it maintains the plain text compatibility and secure local storage of Markdown files.
 
@@ -61,23 +62,26 @@ Alternatively, if you prefer not to use a shortcut:
 ### 🚀 Future Roadmap
 
 - [x]  1. UI/UX Improvement (Completed 2025-11-20)
-*   **Context Menu Integration**: Currently only callable via `Ctrl+P`. Plan to integrate an `EditorMenu` event so users can **right-click** on selected text to see an "Add Annotation" option.
-*   **Sidebar View**:
-    *   Develop a sidebar panel that lists **all annotations** in the current document.
-    *   Clicking an annotation in the sidebar automatically scrolls the editor to the corresponding location (similar to the Review pane in Word).
-*   **Multi-Color Annotations**:
-    *   Allow users to select different annotation colors (e.g., Red for questions, Green for ideas, Yellow for tasks).
-    *   Implementation: Add different classes to the HTML, such as `class="ob-comment red"`.
+*   **Context Menu Integration**: Right-click on selected text to quickly add an annotation via `EditorMenu`.
 
-- [x] 2. Functional Enhancements (Completed 2025-11-20)
-*   **One-Click Delete/Edit Commands**:
-    *   Currently, deletion requires manually removing the code. Develop a command: when the cursor is over annotated text, executing "Delete Annotation" automatically strips the HTML tags, leaving only plain text.
-    *   Executing "Edit Annotation" brings up a pop-up to modify the `data-note` content without having to edit the source code.
-*   **Icon Mode**:
-    *   Add a setting switch: choose between "Underline Mode" or "End-of-Text Icon Mode."
-    *   In Icon Mode, use CSS `::after` pseudo-element to place a symbol like `📝` after the text; the annotation content displays when hovering over the icon.
+- [x] 2. Interaction & Safety (Completed 2025-12-09)
+*   **Multi-line Annotations**: Cross-line selections stay hidden/highlighted correctly and support hover/edit/delete.
+*   **Input Flow**: Enter submits the annotation; Shift+Enter inserts a newline.
+*   **Tooltip Behavior**: Tooltip auto-hides on mouse click or any key press.
 
-- [ ] 3. Export and Summary (On Hold)
+- [ ] 3. Sidebar View
+*   Develop a sidebar panel that lists **all annotations** in the current document.
+*   Clicking an annotation in the sidebar automatically scrolls the editor to the corresponding location (similar to the Review pane in Word).
+
+- [ ] 4. Multi-Color Annotations
+*   Allow users to select different annotation colors (e.g., Red for questions, Green for ideas, Yellow for tasks).
+*   Implementation: Add different classes to the HTML, such as `class="ob-comment red"`.
+
+- [ ] 5. Icon Mode
+*   Add a setting switch: choose between "Underline Mode" or "End-of-Text Icon Mode."
+*   In Icon Mode, use CSS `::after` pseudo-element to place a symbol like `📝` after the text; the annotation content displays when hovering over the icon.
+
+- [ ] 6. Export and Summary (On Hold)
 *   **Annotation Summary**: Add a function to extract all annotations from the current document at once, generating a new Markdown list (including: Original Text, Annotation Content, Location Link). This is highly useful for reading notes.
 
 ***
