@@ -2,14 +2,22 @@
    1. 批注高亮样式 (Annotation Highlights)
    ========================================================================== */
 
-/* 默认样式 (橙色) */
+/* 定义全局变量 (Defaults, will be overridden by JS) */
+:root {
+    --ob-annotation-bg-opacity-light: 0.2;
+    --ob-annotation-bg-opacity-dark: 0.25;
+    --ob-annotation-tooltip-width: 400px;
+    --ob-annotation-tooltip-font-scale: 1.0;
+}
+
+/* 默认样式 (无边框，无背景，仅定义基础属性) */
 .ob-comment {
     --highlight-color: #ff9900;
-    --highlight-bg-alpha: 0.15;
-    --highlight-bg-hover-alpha: 0.35;
     
-    border-bottom: 2px solid var(--highlight-color);
-    background-color: rgba(255, 153, 0, var(--highlight-bg-alpha));
+    /* 默认使用 CSS 变量，但在 JS 中会动态更新这些变量 */
+    --highlight-bg-alpha: var(--ob-annotation-bg-opacity-light); 
+    --highlight-bg-hover-alpha: calc(var(--highlight-bg-alpha) + 0.2);
+    
     cursor: help;
     transition: background-color 0.2s;
     border-radius: 3px;
@@ -18,41 +26,116 @@
 
 /* 浅色模式优化 */
 .theme-light .ob-comment { 
-    --highlight-bg-alpha: 0.2; 
-    --highlight-bg-hover-alpha: 0.40;
+    --highlight-bg-alpha: var(--ob-annotation-bg-opacity-light);
 }
 
-/* 深色模式优化 - 增加不透明度以提高对比度 */
+/* 深色模式优化 */
 .theme-dark .ob-comment { 
-    --highlight-bg-alpha: 0.25; 
-    --highlight-bg-hover-alpha: 0.45;
+    --highlight-bg-alpha: var(--ob-annotation-bg-opacity-dark);
 }
 
-.ob-comment:hover {
-    background-color: rgba(255, 153, 0, var(--highlight-bg-hover-alpha));
+/* --- 显示模式控制 (Display Modes) --- */
+
+/* 1. 下划线模式 */
+body.ob-show-underline .ob-comment {
+    border-bottom: 2px solid var(--highlight-color) !important;
 }
 
-/* 颜色变体 */
-.ob-comment.red { --highlight-color: #e5484d; background-color: rgba(229, 72, 77, var(--highlight-bg-alpha)); border-bottom-color: var(--highlight-color); }
-.ob-comment.red:hover { background-color: rgba(229, 72, 77, var(--highlight-bg-hover-alpha)); }
+/* 2. 背景高亮模式 */
+body.ob-show-background .ob-comment {
+    background-color: rgba(255, 153, 0, var(--highlight-bg-alpha)) !important;
+}
+body.ob-show-background .ob-comment:hover {
+    background-color: rgba(255, 153, 0, var(--highlight-bg-hover-alpha)) !important;
+}
 
-.ob-comment.yellow { --highlight-color: #e6c229; background-color: rgba(230, 194, 41, var(--highlight-bg-alpha)); border-bottom-color: var(--highlight-color); }
-.ob-comment.yellow:hover { background-color: rgba(230, 194, 41, var(--highlight-bg-hover-alpha)); }
+/* 3. 图标模式 (伪元素) */
+body.ob-show-icon .ob-comment::after {
+    content: "📝";
+    font-size: 0.85em;
+    margin-left: 4px;
+    opacity: 0.8;
+    width: 1.05em;
+    height: 1.05em;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    pointer-events: auto;
+    cursor: pointer;
+}
 
-.ob-comment.green { --highlight-color: #2f9d62; background-color: rgba(47, 157, 98, var(--highlight-bg-alpha)); border-bottom-color: var(--highlight-color); }
-.ob-comment.green:hover { background-color: rgba(47, 157, 98, var(--highlight-bg-hover-alpha)); }
+body.ob-icon-only-mode .ob-comment {
+    cursor: text;
+}
 
-.ob-comment.cyan { --highlight-color: #1abc9c; background-color: rgba(26, 188, 156, var(--highlight-bg-alpha)); border-bottom-color: var(--highlight-color); }
-.ob-comment.cyan:hover { background-color: rgba(26, 188, 156, var(--highlight-bg-hover-alpha)); }
+body.ob-icon-only-mode .ob-comment::after {
+    cursor: pointer;
+}
 
-.ob-comment.blue { --highlight-color: #3498db; background-color: rgba(52, 152, 219, var(--highlight-bg-alpha)); border-bottom-color: var(--highlight-color); }
-.ob-comment.blue:hover { background-color: rgba(52, 152, 219, var(--highlight-bg-hover-alpha)); }
+/* --- 颜色变体 (Color Variants) --- */
+/* 
+   为了支持叠加模式，我们需要确保颜色变体也能正确应用 !important，
+   或者通过 CSS 变量来控制颜色，上面的通用规则已经使用了变量，所以这里只需要更新变量即可。
+   但是，旧的颜色类直接设置了 background-color。我们需要调整策略。
+   
+   最佳策略：让颜色类只定义 CSS 变量 --highlight-color。
+   背景色由上面的通用规则统一处理。
+*/
 
-.ob-comment.purple { --highlight-color: #9b59b6; background-color: rgba(155, 89, 182, var(--highlight-bg-alpha)); border-bottom-color: var(--highlight-color); }
-.ob-comment.purple:hover { background-color: rgba(155, 89, 182, var(--highlight-bg-hover-alpha)); }
+.ob-comment.red { --highlight-color: #e5484d; }
+.ob-comment.yellow { --highlight-color: #e6c229; }
+.ob-comment.green { --highlight-color: #2f9d62; }
+.ob-comment.cyan { --highlight-color: #1abc9c; }
+.ob-comment.blue { --highlight-color: #3498db; }
+.ob-comment.purple { --highlight-color: #9b59b6; }
+.ob-comment.gray { --highlight-color: #95a5a6; }
 
-.ob-comment.gray { --highlight-color: #95a5a6; background-color: rgba(149, 165, 166, var(--highlight-bg-alpha)); border-bottom-color: var(--highlight-color); }
-.ob-comment.gray:hover { background-color: rgba(149, 165, 166, var(--highlight-bg-hover-alpha)); }
+/* 
+   由于颜色变体原本也设置了 background-color，我们需要覆盖它，
+   或者让它也遵循 body.ob-show-background 的逻辑。
+   现在的通用规则 body.ob-show-background .ob-comment 使用了 !important，
+   它会覆盖颜色类中（如果有）的普通 background-color 声明。
+   但是，上面的 .ob-comment.red 等类目前只定义了变量（在我修改后）。
+   为了安全起见，我们需要确保颜色类也针对不同模式有正确的表现。
+   
+   其实，只要 .ob-comment 及其颜色变体只定义变量，
+   然后由 body.ob-show-background .ob-comment 统一使用这些变量设置 background-color，
+   逻辑就完美了。
+   
+   我们需要修正颜色变体的定义，去掉其中的 background-color 和 border-bottom 属性，
+   改为只定义变量。
+*/
+
+/* 移除旧的特定颜色背景定义，它们将由通用规则接管 */
+.ob-comment.red, .ob-comment.yellow, .ob-comment.green, 
+.ob-comment.cyan, .ob-comment.blue, .ob-comment.purple, .ob-comment.gray {
+    /* No direct styles, just variable updates above */
+}
+
+/* 处理 Hover 状态的颜色变量更新 */
+.ob-comment.red { background-color: transparent; } /* Reset */
+body.ob-show-background .ob-comment.red { background-color: rgba(229, 72, 77, var(--highlight-bg-alpha)) !important; }
+body.ob-show-background .ob-comment.red:hover { background-color: rgba(229, 72, 77, var(--highlight-bg-hover-alpha)) !important; }
+
+body.ob-show-background .ob-comment.yellow { background-color: rgba(230, 194, 41, var(--highlight-bg-alpha)) !important; }
+body.ob-show-background .ob-comment.yellow:hover { background-color: rgba(230, 194, 41, var(--highlight-bg-hover-alpha)) !important; }
+
+body.ob-show-background .ob-comment.green { background-color: rgba(47, 157, 98, var(--highlight-bg-alpha)) !important; }
+body.ob-show-background .ob-comment.green:hover { background-color: rgba(47, 157, 98, var(--highlight-bg-hover-alpha)) !important; }
+
+body.ob-show-background .ob-comment.cyan { background-color: rgba(26, 188, 156, var(--highlight-bg-alpha)) !important; }
+body.ob-show-background .ob-comment.cyan:hover { background-color: rgba(26, 188, 156, var(--highlight-bg-hover-alpha)) !important; }
+
+body.ob-show-background .ob-comment.blue { background-color: rgba(52, 152, 219, var(--highlight-bg-alpha)) !important; }
+body.ob-show-background .ob-comment.blue:hover { background-color: rgba(52, 152, 219, var(--highlight-bg-hover-alpha)) !important; }
+
+body.ob-show-background .ob-comment.purple { background-color: rgba(155, 89, 182, var(--highlight-bg-alpha)) !important; }
+body.ob-show-background .ob-comment.purple:hover { background-color: rgba(155, 89, 182, var(--highlight-bg-hover-alpha)) !important; }
+
+body.ob-show-background .ob-comment.gray { background-color: rgba(149, 165, 166, var(--highlight-bg-alpha)) !important; }
+body.ob-show-background .ob-comment.gray:hover { background-color: rgba(149, 165, 166, var(--highlight-bg-hover-alpha)) !important; }
+
 
 
 /* ==========================================================================
@@ -73,10 +156,13 @@ body .ob-annotation-tooltip {
     /* Ensure markdown content (like tables) wraps and displays correctly */
     white-space: normal;
     
-    /* 字体大小：介于 small 和 medium 之间 */
-    font-size: calc((var(--font-ui-small) + var(--font-ui-medium)) / 2);
+    /* 字体大小：动态缩放 */
+    font-size: calc(var(--font-ui-medium) * var(--ob-annotation-tooltip-font-scale));
     line-height: 1.4;
-    max-width: 800px;
+    
+    /* 宽度：动态设置 */
+    max-width: min(var(--ob-annotation-tooltip-width), 90vw);
+    white-space: normal; /* Ensure text wraps */
     
     z-index: var(--layer-popover);
     pointer-events: none;

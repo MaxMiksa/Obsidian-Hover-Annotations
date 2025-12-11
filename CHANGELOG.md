@@ -1,3 +1,29 @@
+## v1.5.0 – New Settings Panel & Customization (2025-12-11)
+
+### Feature 1: Comprehensive Appearance Settings
+- **Summary**: Introduced a full settings tab for deep customization.
+- **Problem Solved**: Fixed styles didn't fit all themes or user preferences.
+- **Feature Details**: Toggle underline, background, icon; Adjust opacity for light/dark modes.
+- **Technical Implementation**: Added `AnnotationSettingTab` and dynamic CSS variables.
+
+### Feature 2: Minimalist Icon Mode
+- **Summary**: Option to show only an icon (📌) without text highlighting.
+- **Problem Solved**: Heavy highlighting can distract from reading flow.
+- **Feature Details**: Text appears normal; hover/click the end icon to see annotations. Configurable trigger (hover/click).
+- **Technical Implementation**: CSS pseudo-elements and precise coordinate detection (`isEventOnIcon`) for mouse events.
+
+### Feature 3: Tooltip Readability Improvements
+- **Summary**: Custom width and font scale for annotation tooltips.
+- **Problem Solved**: Tooltips were too narrow or small for long notes.
+- **Feature Details**: New sliders/inputs for tooltip max-width and font scaling.
+- **Technical Implementation**: Mapped settings to CSS variables `--ob-annotation-tooltip-width` etc.
+
+### Feature 4: Data Tools (Export & Fix)
+- **Summary**: Utilities to export annotations and fix legacy data.
+- **Problem Solved**: Hard to extract notes; legacy format issues.
+- **Feature Details**: "Export to Clipboard" and "Fix Data" buttons in settings.
+- **Technical Implementation**: Regex-based extraction and bulk normalization logic.
+
 ## v1.4.0 – Batch Fix Safety & Markdown Tables (Dec 10, 2025)
 
 ### Feature 1: Batch Fix Confirmation Modal
@@ -85,7 +111,7 @@
 ### Feature 1: Insert annotations plus right-click edit/delete
 - **Summary**: Command and context-menu flow to add, edit, or remove annotations quickly.
 - **Problem Solved**: Needed a fast way to mark text in the editor and adjust or remove it later.
-- **Feature Details**: Selected text is wrapped in `<span class="ob-comment" data-note="...">`; when the cursor is on an annotation, right-click shows edit/delete to replace the content directly.
+- **Feature Details**: Selected text is wrapped in `<span class="ob-comment" data-note="...">`; when the cursor is on an annotation, right-click shows edit and delete options.
 - **Technical Implementation**: 
   - `add-annotation-html` command plus `handleContextMenu` with `findAnnotationAtCursor` to locate annotations and `replaceRange` updates.
   - `AnnotationModal` gathers note text and writes it into `data-note` while preserving the original visible text.

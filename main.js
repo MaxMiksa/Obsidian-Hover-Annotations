@@ -43,6 +43,19 @@ var COLOR_OPTIONS = [
   { value: "gray", label: "\u7070\u8272", hex: "#95a5a6" }
 ];
 var DEFAULT_COLOR = "";
+var DEFAULT_SETTINGS = {
+  defaultColor: DEFAULT_COLOR,
+  hideAnnotations: false,
+  enableUnderline: true,
+  enableBackground: true,
+  enableIcon: false,
+  iconTooltipTrigger: "hover",
+  lightOpacity: 20,
+  darkOpacity: 25,
+  tooltipWidth: 800,
+  tooltipFontScale: 100,
+  enableMarkdown: true
+};
 function buildAnnotationClass(color) {
   return color ? "ob-comment " + color : "ob-comment";
 }
@@ -78,7 +91,11 @@ var _AnnotationPlugin = class _AnnotationPlugin extends import_obsidian.Plugin {
     this.tooltipEl = null;
   }
   // 记忆上次使用的颜色
-  onload() {
+  async onload() {
+    await this.loadSettings();
+    _AnnotationPlugin.lastUsedColor = this.settings.defaultColor;
+    this.updateStyles();
+    this.addSettingTab(new AnnotationSettingTab(this.app, this));
     COLOR_OPTIONS.forEach((opt) => {
       const iconId = opt.value ? `ob-annotation-icon-${opt.value}` : `ob-annotation-icon-default`;
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="66" height="66" viewBox="0 0 24 24" style="overflow: visible"><circle cx="12" cy="20" r="10" style="fill:${opt.hex};stroke:${opt.hex};stroke-width:1;" /></svg>`;
@@ -104,8 +121,15 @@ var _AnnotationPlugin = class _AnnotationPlugin extends import_obsidian.Plugin {
     this.addCommand({
       id: "toggle-annotation-visibility",
       name: "\u663E\u793A/\u9690\u85CF\u6279\u6CE8\u6837\u5F0F",
-      callback: () => {
-        document.body.classList.toggle("ob-hide-annotations");
+      callback: async () => {
+        this.settings.hideAnnotations = !this.settings.hideAnnotations;
+        this.updateStyles();
+        await this.saveSettings();
+        if (this.settings.hideAnnotations) {
+          new import_obsidian.Notice("\u6279\u6CE8\u6837\u5F0F\u5DF2\u9690\u85CF");
+        } else {
+          new import_obsidian.Notice("\u6279\u6CE8\u6837\u5F0F\u5DF2\u663E\u793A");
+        }
       }
     });
     this.addCommand({
@@ -141,10 +165,24 @@ var _AnnotationPlugin = class _AnnotationPlugin extends import_obsidian.Plugin {
     this.registerDomEvent(document, "mouseover", (evt) => {
       if (document.body.classList.contains("ob-hide-annotations")) return;
       const target = evt.target;
-      if (target && target.hasClass && target.hasClass("ob-comment")) {
+      if (this.shouldShowTooltipOnHover(evt, target)) {
         const note = target.getAttribute("data-note");
         if (note) this.showTooltip(evt, note);
       }
+    });
+    this.registerDomEvent(document, "mousemove", (evt) => {
+      if (!this.isIconOnlyMode()) return;
+      if (this.settings.iconTooltipTrigger !== "hover") return;
+      if (document.body.classList.contains("ob-hide-annotations")) return;
+      const target = evt.target;
+      if (target && target.hasClass && target.hasClass("ob-comment")) {
+        const note = target.getAttribute("data-note");
+        if (note && this.isEventOnIcon(evt, target)) {
+          this.showTooltip(evt, note);
+          return;
+        }
+      }
+      this.hideTooltip();
     });
     this.registerDomEvent(document, "mouseout", (evt) => {
       const target = evt.target;
@@ -156,8 +194,10 @@ var _AnnotationPlugin = class _AnnotationPlugin extends import_obsidian.Plugin {
       if (document.body.classList.contains("ob-hide-annotations")) return;
       const target = evt.target;
       if (target && target.hasClass && target.hasClass("ob-comment")) {
-        const note = target.getAttribute("data-note");
-        if (note) this.showTooltip(evt, note);
+        if (this.shouldShowTooltipOnClick(evt, target)) {
+          const note = target.getAttribute("data-note");
+          if (note) this.showTooltip(evt, note);
+        }
       } else {
         if (this.tooltipEl && !this.tooltipEl.contains(target)) {
           this.hideTooltip();
@@ -184,6 +224,70 @@ var _AnnotationPlugin = class _AnnotationPlugin extends import_obsidian.Plugin {
     if (this.tooltipEl) {
       this.tooltipEl.remove();
     }
+    document.body.classList.remove("ob-show-underline", "ob-show-background", "ob-show-icon", "ob-hide-annotations", "ob-icon-only-mode");
+    const rootStyle = document.documentElement.style;
+    rootStyle.removeProperty("--ob-annotation-bg-opacity-light");
+    rootStyle.removeProperty("--ob-annotation-bg-opacity-dark");
+    rootStyle.removeProperty("--ob-annotation-tooltip-width");
+    rootStyle.removeProperty("--ob-annotation-tooltip-font-scale");
+  }
+  async loadSettings() {
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+  }
+  async saveSettings() {
+    await this.saveData(this.settings);
+  }
+  isIconOnlyMode() {
+    return this.settings.enableIcon && !this.settings.enableUnderline && !this.settings.enableBackground;
+  }
+  isEventOnIcon(evt, target) {
+    const rects = target.getClientRects();
+    if (!rects.length) return false;
+    const lastRect = rects[rects.length - 1];
+    const style = getComputedStyle(target, "::after");
+    const iconWidth = parseFloat(style.width || "") || 14;
+    const iconMarginLeft = parseFloat(style.marginLeft || "") || 2;
+    const hitboxStartX = lastRect.right - iconWidth - iconMarginLeft;
+    const x = evt.clientX;
+    const y = evt.clientY;
+    return x >= hitboxStartX && x <= lastRect.right && y >= lastRect.top && y <= lastRect.bottom;
+  }
+  shouldShowTooltipOnHover(evt, target) {
+    if (!target || !target.hasClass || !target.hasClass("ob-comment")) return false;
+    if (this.isIconOnlyMode()) {
+      if (this.settings.iconTooltipTrigger !== "hover") return false;
+      return this.isEventOnIcon(evt, target);
+    }
+    return true;
+  }
+  shouldShowTooltipOnClick(evt, target) {
+    if (!target || !target.hasClass || !target.hasClass("ob-comment")) return false;
+    if (this.isIconOnlyMode()) {
+      return this.isEventOnIcon(evt, target);
+    }
+    return true;
+  }
+  /**
+   * 根据当前设置更新全局样式（body class + CSS 变量），即时生效。
+   */
+  updateStyles() {
+    var _a, _b;
+    const iconOnlyMode = this.isIconOnlyMode();
+    document.body.classList.toggle("ob-show-underline", this.settings.enableUnderline);
+    document.body.classList.toggle("ob-show-background", this.settings.enableBackground);
+    document.body.classList.toggle("ob-show-icon", this.settings.enableIcon);
+    document.body.classList.toggle("ob-hide-annotations", this.settings.hideAnnotations);
+    document.body.classList.toggle("ob-icon-only-mode", iconOnlyMode);
+    const clampOpacity = (value) => Math.min(Math.max(value, 0), 100) / 100;
+    const rootStyle = document.documentElement.style;
+    const lightAlpha = clampOpacity((_a = this.settings.lightOpacity) != null ? _a : DEFAULT_SETTINGS.lightOpacity);
+    const darkAlpha = clampOpacity((_b = this.settings.darkOpacity) != null ? _b : DEFAULT_SETTINGS.darkOpacity);
+    const tooltipWidth = this.settings.tooltipWidth > 0 ? this.settings.tooltipWidth : DEFAULT_SETTINGS.tooltipWidth;
+    const fontScale = this.settings.tooltipFontScale > 0 ? this.settings.tooltipFontScale : DEFAULT_SETTINGS.tooltipFontScale;
+    rootStyle.setProperty("--ob-annotation-bg-opacity-light", lightAlpha.toString());
+    rootStyle.setProperty("--ob-annotation-bg-opacity-dark", darkAlpha.toString());
+    rootStyle.setProperty("--ob-annotation-tooltip-width", `${tooltipWidth}px`);
+    rootStyle.setProperty("--ob-annotation-tooltip-font-scale", `${fontScale / 100}`);
   }
   // --- 核心逻辑区 ---
   /**
@@ -330,7 +434,13 @@ var _AnnotationPlugin = class _AnnotationPlugin extends import_obsidian.Plugin {
     this.tooltipEl.empty();
     const decodedText = decodeDataNote(text);
     const sourcePath = ((_a = this.app.workspace.getActiveFile()) == null ? void 0 : _a.path) || "";
-    import_obsidian.MarkdownRenderer.render(this.app, decodedText, this.tooltipEl, sourcePath, this);
+    if (this.settings.enableMarkdown) {
+      import_obsidian.MarkdownRenderer.render(this.app, decodedText, this.tooltipEl, sourcePath, this);
+    } else {
+      const pre = this.tooltipEl.createEl("pre", { text: decodedText });
+      pre.style.margin = "0";
+      pre.style.whiteSpace = "pre-wrap";
+    }
     this.tooltipEl.addClass("is-visible");
     const x = evt.pageX;
     const y = evt.pageY - 40;
@@ -392,6 +502,109 @@ var _AnnotationPlugin = class _AnnotationPlugin extends import_obsidian.Plugin {
 };
 _AnnotationPlugin.lastUsedColor = DEFAULT_COLOR;
 var AnnotationPlugin = _AnnotationPlugin;
+var AnnotationSettingTab = class extends import_obsidian.PluginSettingTab {
+  constructor(app, plugin) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
+  display() {
+    const { containerEl } = this;
+    containerEl.empty();
+    containerEl.createEl("h2", { text: "\u57FA\u7840\u8BBE\u7F6E (General Settings)" });
+    new import_obsidian.Setting(containerEl).setName("\u9ED8\u8BA4\u6279\u6CE8\u989C\u8272").setDesc("\u51B3\u5B9A\u65B0\u5EFA\u6279\u6CE8\u65F6\u7684\u521D\u59CB\u9009\u4E2D\u989C\u8272\u3002").addDropdown((dropdown) => {
+      COLOR_OPTIONS.forEach((opt) => {
+        dropdown.addOption(opt.value, opt.label);
+      });
+      dropdown.setValue(this.plugin.settings.defaultColor).onChange(async (value) => {
+        this.plugin.settings.defaultColor = value;
+        AnnotationPlugin.lastUsedColor = value;
+        await this.plugin.saveSettings();
+      });
+    });
+    new import_obsidian.Setting(containerEl).setName("\u9ED8\u8BA4\u9690\u85CF\u6279\u6CE8").setDesc("\u5F00\u542F\u540E\uFF0CObsidian \u542F\u52A8\u65F6\u5C06\u81EA\u52A8\u9690\u85CF\u6240\u6709\u6279\u6CE8\u7684\u9AD8\u4EAE\u6837\u5F0F\uFF08\u7EAF\u51C0\u9605\u8BFB\u6A21\u5F0F\uFF09\u3002").addToggle((toggle) => toggle.setValue(this.plugin.settings.hideAnnotations).onChange(async (value) => {
+      this.plugin.settings.hideAnnotations = value;
+      this.plugin.updateStyles();
+      await this.plugin.saveSettings();
+    }));
+    containerEl.createEl("h2", { text: "\u5916\u89C2\u6837\u5F0F (Appearance)" });
+    new import_obsidian.Setting(containerEl).setName("\u663E\u793A\u4E0B\u5212\u7EBF").setDesc("\u4E3A\u6279\u6CE8\u6587\u672C\u6DFB\u52A0\u5E95\u90E8\u5F69\u8272\u4E0B\u5212\u7EBF\u3002").addToggle((toggle) => toggle.setValue(this.plugin.settings.enableUnderline).onChange(async (value) => {
+      this.plugin.settings.enableUnderline = value;
+      this.plugin.updateStyles();
+      await this.plugin.saveSettings();
+    }));
+    new import_obsidian.Setting(containerEl).setName("\u663E\u793A\u80CC\u666F\u8272").setDesc("\u4E3A\u6279\u6CE8\u6587\u672C\u6DFB\u52A0\u534A\u900F\u660E\u80CC\u666F\u9AD8\u4EAE\u3002").addToggle((toggle) => toggle.setValue(this.plugin.settings.enableBackground).onChange(async (value) => {
+      this.plugin.settings.enableBackground = value;
+      this.plugin.updateStyles();
+      await this.plugin.saveSettings();
+    }));
+    new import_obsidian.Setting(containerEl).setName("\u663E\u793A\u6587\u672B\u56FE\u6807").setDesc("\u5728\u6279\u6CE8\u6587\u672C\u672B\u5C3E\u8FFD\u52A0\u4E00\u4E2A\u5C0F\u7684\u201C\u{1F4DD}\u201D\u56FE\u6807 (\u4F2A\u5143\u7D20)\u3002").addToggle((toggle) => toggle.setValue(this.plugin.settings.enableIcon).onChange(async (value) => {
+      this.plugin.settings.enableIcon = value;
+      this.plugin.updateStyles();
+      await this.plugin.saveSettings();
+    }));
+    new import_obsidian.Setting(containerEl).setName("\u6587\u672B\u56FE\u6807\u89E6\u53D1\u65B9\u5F0F").setDesc("\u4EC5\u5728\u201C\u4EC5\u56FE\u6807\u201D\u6A21\u5F0F\u4E0B\u751F\u6548\uFF1A\u9009\u62E9\u60AC\u6D6E\u56FE\u6807\u81EA\u52A8\u5F39\u51FA\uFF0C\u6216\u9700\u70B9\u51FB\u56FE\u6807\u540E\u624D\u663E\u793A\u6279\u6CE8\u3002").addDropdown((dropdown) => {
+      dropdown.addOption("hover", "\u79FB\u52A8\u5230\u56FE\u6807\u81EA\u52A8\u60AC\u6D6E");
+      dropdown.addOption("click", "\u70B9\u51FB\u56FE\u6807\u540E\u518D\u60AC\u6D6E");
+      dropdown.setValue(this.plugin.settings.iconTooltipTrigger).onChange(async (value) => {
+        const nextValue = value === "click" ? "click" : "hover";
+        this.plugin.settings.iconTooltipTrigger = nextValue;
+        await this.plugin.saveSettings();
+      });
+    }).setDisabled(!this.plugin.settings.enableIcon);
+    new import_obsidian.Setting(containerEl).setName("\u6D45\u8272\u6A21\u5F0F\u4E0D\u900F\u660E\u5EA6").setDesc("\u8C03\u6574 Light \u4E3B\u9898\u4E0B\u9AD8\u4EAE\u80CC\u666F\u7684\u6DF1\u6D45 (0% - 100%)\u3002").addSlider((slider) => slider.setLimits(0, 100, 5).setValue(this.plugin.settings.lightOpacity).setDynamicTooltip().onChange(async (value) => {
+      this.plugin.settings.lightOpacity = value;
+      this.plugin.updateStyles();
+      await this.plugin.saveSettings();
+    }));
+    new import_obsidian.Setting(containerEl).setName("\u6DF1\u8272\u6A21\u5F0F\u4E0D\u900F\u660E\u5EA6").setDesc("\u8C03\u6574 Dark \u4E3B\u9898\u4E0B\u9AD8\u4EAE\u80CC\u666F\u7684\u6DF1\u6D45 (0% - 100%)\u3002").addSlider((slider) => slider.setLimits(0, 100, 5).setValue(this.plugin.settings.darkOpacity).setDynamicTooltip().onChange(async (value) => {
+      this.plugin.settings.darkOpacity = value;
+      this.plugin.updateStyles();
+      await this.plugin.saveSettings();
+    }));
+    containerEl.createEl("h2", { text: "\u4EA4\u4E92\u4F53\u9A8C (Interaction)" });
+    new import_obsidian.Setting(containerEl).setName("Tooltip \u6700\u5927\u5BBD\u5EA6").setDesc("\u9650\u5236\u60AC\u6D6E\u6C14\u6CE1\u7684\u6700\u5927\u5BBD\u5EA6 (px)\u3002").addText((text) => text.setPlaceholder("800").setValue(this.plugin.settings.tooltipWidth.toString()).onChange(async (value) => {
+      const num = parseInt(value);
+      if (!isNaN(num)) {
+        this.plugin.settings.tooltipWidth = num;
+        this.plugin.updateStyles();
+        await this.plugin.saveSettings();
+      }
+    }));
+    new import_obsidian.Setting(containerEl).setName("Tooltip \u5B57\u4F53\u7F29\u653E").setDesc("\u8C03\u6574\u6C14\u6CE1\u5185\u6587\u5B57\u7684\u5927\u5C0F\u767E\u5206\u6BD4 (100% \u4E3A\u9ED8\u8BA4)\u3002").addSlider((slider) => slider.setLimits(50, 200, 10).setValue(this.plugin.settings.tooltipFontScale).setDynamicTooltip().onChange(async (value) => {
+      this.plugin.settings.tooltipFontScale = value;
+      this.plugin.updateStyles();
+      await this.plugin.saveSettings();
+    }));
+    new import_obsidian.Setting(containerEl).setName("\u542F\u7528 Markdown \u6E32\u67D3").setDesc("\u5F00\u542F\u540E\uFF0C\u6279\u6CE8\u5185\u5BB9\u5C06\u652F\u6301 Markdown \u8BED\u6CD5\uFF08\u7C97\u4F53\u3001\u8868\u683C\u7B49\uFF09\u3002\u5173\u95ED\u5219\u663E\u793A\u7EAF\u6587\u672C\u6E90\u7801\u3002").addToggle((toggle) => toggle.setValue(this.plugin.settings.enableMarkdown).onChange(async (value) => {
+      this.plugin.settings.enableMarkdown = value;
+      await this.plugin.saveSettings();
+    }));
+    containerEl.createEl("h2", { text: "\u9AD8\u7EA7\u4E0E\u7EF4\u62A4 (Advanced)" });
+    new import_obsidian.Setting(containerEl).setName("\u4E00\u952E\u4FEE\u590D\u6570\u636E").setDesc("\u626B\u63CF\u5E93\u4E2D\u6240\u6709\u6587\u4EF6\uFF0C\u4FEE\u590D\u65E7\u7248\u6279\u6CE8\u7684\u6570\u636E\u683C\u5F0F\u95EE\u9898\u3002").addButton((button) => button.setButtonText("\u5F00\u59CB\u626B\u63CF\u4FEE\u590D").onClick(async () => {
+      await this.plugin.normalizeAllMarkdownFiles();
+    }));
+    new import_obsidian.Setting(containerEl).setName("\u5BFC\u51FA\u6240\u6709\u6279\u6CE8 (\u5F53\u524D\u6587\u4EF6)").setDesc("\u5C06\u5F53\u524D\u6587\u6863\u4E2D\u7684\u6240\u6709\u6279\u6CE8\u63D0\u53D6\u5230\u526A\u8D34\u677F\u3002").addButton((button) => button.setButtonText("\u590D\u5236\u5230\u526A\u8D34\u677F").onClick(async () => {
+      const view = this.plugin.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
+      if (view) {
+        const text = view.editor.getValue();
+        const regex = /<span class="ob-comment(?:\s+[\w-]+)?" data-note="([\s\S]*?)">([\s\S]*?)<\/span>/g;
+        let match;
+        let output = "## Annotations Export\n\n";
+        while ((match = regex.exec(text)) !== null) {
+          const note = decodeDataNote(match[1]);
+          const original = match[2];
+          output += `- **\u539F\u6587**: "${original}"
+  - **\u6279\u6CE8**: ${note}
+`;
+        }
+        await navigator.clipboard.writeText(output);
+        new import_obsidian.Notice("\u6279\u6CE8\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F\uFF01");
+      } else {
+        new import_obsidian.Notice("\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A Markdown \u6587\u6863");
+      }
+    }));
+  }
+};
 var AnnotationModal = class extends import_obsidian.Modal {
   constructor(app, defaultValue, defaultColor, onSubmit) {
     super(app);

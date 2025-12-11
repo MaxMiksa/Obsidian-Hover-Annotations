@@ -1,3 +1,29 @@
+## v1.5.0 – New Settings Panel & Customization / 全新设置面板与个性化定制 (2025年12月11日)
+
+## ✨ 全新设置面板与极简图标模式
+
+**本次更新引入了功能强大的设置面板，支持外观深度定制，并新增“极简图标”阅读模式。**
+
+| 类别 | 详细内容 |
+| :--- | :--- |
+| **个性化外观** | 新增完整设置页，可开关下划线、背景色、调节不透明度。 |
+| **极简模式** | 支持“仅图标”模式 (📌)，隐藏高亮，仅在文末显示小图标，点击或悬浮查看。 |
+| **阅读体验** | Tooltip 弹窗宽度和字体大小均可自定义，适应不同屏幕和阅读习惯。 |
+| **数据管理** | 新增“导出所有批注”到剪贴板功能，以及旧版本数据一键修复工具。 |
+
+## ✨ Comprehensive Settings & Minimalist Icon Mode
+
+**This update introduces a powerful settings panel for deep customization and a new "Icon Only" reading mode.**
+
+| Category | Details |
+| :--- | :--- |
+| **Custom Looks** | Full settings tab to toggle underline/background and adjust opacity. |
+| **Icon Mode** | "Icon Only" mode (📌) hides highlights, showing only a small icon at the end. |
+| **Readability** | Customizable tooltip width and font scale for better reading experience. |
+| **Data Tools** | New tools to "Export All Annotations" and "Fix Legacy Data" in settings. |
+
+---
+
 ## v1.4.0 – Batch Fix Safety & Markdown Tables / 批量修复保护与 Markdown 表格支持 (2025年12月10日)
 
 ## ✨ 批量修复保护与 Markdown 表格
