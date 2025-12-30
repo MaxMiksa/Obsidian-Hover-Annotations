@@ -1,6 +1,6 @@
 {
-	"id": "hover-annotation",
-	"name": "Hover Annotation",
+	"id": "hover-annotations",
+	"name": "Hover Annotations",
 	"version": "1.6.0",
 	"minAppVersion": "0.15.0",
 	"description": "Enable text annotations, display content upon mouse hover (or: show hover text/tooltips), and support both Reading Mode and Real-time Preview Mode.",
