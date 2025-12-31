@@ -36,15 +36,15 @@ The plugin is called **Hover Annotations**: It allows you to **automatically hid
 
 **Step 1: Adding an Annotation**  
 
-**Method A: Using Shortcuts (Fastest)**
-1. Select a piece of text and press `Alt+c` (must be bound in settings).
-2. Enter your annotation in the popup and press Enter or click "OK".  
-**Method B: Using Context Menu**
-1. Right-click on the selected text.
-2. Select **"Add Annotation"** from the menu.  
-**Method C: Using Command Palette**
-1. Select text and press `Ctrl/Cmd + P`.
-2. Search for `Hover` or `Annotation` and run **"Hover Annotations: Add Annotation (Default)"**.
+- **Method A: Using Shortcuts (Fastest)**
+    1. Select a piece of text and press `Alt+c` (must be bound in settings).
+    2. Enter your annotation in the popup and press Enter or click "OK".  
+- **Method B: Using Context Menu**
+    1. Right-click on the selected text.
+    2. Select **"Add Annotation"** from the menu.  
+- **Method C: Using Command Palette**
+    1. Select text and press `Ctrl/Cmd + P`.
+    2. Search for `Hover` or `Annotation` and run **"Hover Annotations: Add Annotation (Default)"**.
 
 **Step 2: Viewing Annotations**
 * Annotated text will have an **orange underline** and light background.
