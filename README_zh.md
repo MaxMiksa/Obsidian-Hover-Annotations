@@ -61,6 +61,8 @@
 </td>
 <td width="40%" valign="top">
 <br>
+<img src="Presentation/v1.6.0/menu.png" alt="Context Menu" width="100%">
+<br>
 <img src="Presentation/v1.6.0/edit.png" alt="Edit Annotation" width="100%">
 </td>
 </tr>
