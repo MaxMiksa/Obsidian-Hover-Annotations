@@ -28,11 +28,11 @@ The plugin is called **Hover Annotations**: It allows you to **automatically hid
 | **🛡️ Data Safety** | Annotations are stored as standard HTML `<span>` tags; safe even if the plugin is uninstalled. |
 | **🔧 Auto-Repair** | One-click fix for legacy data-note formatting issues. |
 
+## How to Use
+
 <table>
 <tr>
 <td width="60%" valign="top">
-
-## How to Use
 
 **Step 1: Adding an Annotation**
 **Method A: Using Shortcuts (Fastest)**
