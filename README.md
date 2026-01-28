@@ -8,6 +8,7 @@
 The plugin is called **Hover Annotations**: It allows you to **automatically hide annotation content after insertion and instantly display it upon mouse hover within Obsidian**. At the same time, it maintains the plain text compatibility and secure local storage of Markdown files.
 
 ***
+
 ## ✨ Feature Overview
 
 ![Feature Overview](Presentation/v1.6.0/presentation.gif)
@@ -27,6 +28,30 @@ The plugin is called **Hover Annotations**: It allows you to **automatically hid
 | **🚀 Efficiency** | Bind hotkeys to specific colors; toggle visibility of all annotations for clean reading. |
 | **🛡️ Data Safety** | Annotations are stored as standard HTML `<span>` tags; safe even if the plugin is uninstalled. |
 | **🔧 Auto-Repair** | One-click fix for legacy data-note formatting issues. |
+
+## 📥 Installation
+
+### Method 1: Community Plugins (Under Review)
+The plugin has been submitted to the official store and is currently under review (estimated ~1 month). Once approved, you will be able to install it via:
+1. Open Obsidian **Settings** > **Community plugins**.
+2. Turn on **Restricted mode** (disable Safe Mode).
+3. Click **Browse** and search for **"Hover Annotations"**.
+4. Click **Install** and then **Enable**.
+
+### Method 2: BRAT (Recommended - Available Now)
+Since the plugin is not yet in the community store, **BRAT is the recommended way to install and auto-update**.
+1. Install **BRAT** from the Community Plugins.
+2. Open BRAT settings.
+3. Click **"Add Better Obsidian plugin"**.
+4. Enter `MaxMiksa/Obsidian-Simple-HTML-Annotation`.
+5. Click **"Add Plugin"**.
+
+### Method 3: Manual Installation
+1. Download the latest release (`main.js`, `manifest.json`, `styles.css`) from the [Releases](https://github.com/MaxMiksa/Obsidian-Simple-HTML-Annotation/releases) page.
+2. Navigate to your Obsidian vault folder: `.obsidian/plugins/`.
+3. Create a folder named `hover-annotations`.
+4. Paste the downloaded files into this folder.
+5. Reload Obsidian and enable the plugin.
 
 ## How to Use
 
