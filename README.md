@@ -81,7 +81,7 @@ Since the plugin is not yet in the community store, **BRAT is the recommended wa
 1. Install **BRAT** from the Community Plugins.
 2. Open BRAT settings.
 3. Click **"Add Better Obsidian plugin"**.
-4. Enter `MaxMiksa/Obsidian-Simple-HTML-Annotation`.
+4. Enter `MaxMiksa/Obsidian-Hover-Annotations`.
 5. Click **"Add Plugin"**.
 
 ### Method 3: Manual Installation
