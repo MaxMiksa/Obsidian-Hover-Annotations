@@ -87,7 +87,7 @@
 5. 点击 **"Add Plugin"**。
 
 ### 方法 3：手动安装
-1. 前往 GitHub [Releases](https://github.com/MaxMiksa/Obsidian-Simple-HTML-Annotation/releases) 页面下载最新版本的 `main.js`、`manifest.json` 和 `styles.css` 文件。
+1. 前往 GitHub [Releases](https://github.com/MaxMiksa/Obsidian-Hover-Annotations/releases) 页面下载最新版本的 `main.js`、`manifest.json` 和 `styles.css` 文件。
 2. 打开你的 Obsidian 仓库文件夹，找到 `.obsidian/plugins/` 目录。
 3. 新建一个文件夹，命名为 `hover-annotations`。
 4. 将下载的文件放入该文件夹。

@@ -85,7 +85,7 @@ Since the plugin is not yet in the community store, **BRAT is the recommended wa
 5. Click **"Add Plugin"**.
 
 ### Method 3: Manual Installation
-1. Download the latest release (`main.js`, `manifest.json`, `styles.css`) from the [Releases](https://github.com/MaxMiksa/Obsidian-Simple-HTML-Annotation/releases) page.
+1. Download the latest release (`main.js`, `manifest.json`, `styles.css`) from the [Releases](https://github.com/MaxMiksa/Obsidian-Hover-Annotations/releases) page.
 2. Navigate to your Obsidian vault folder: `.obsidian/plugins/`.
 3. Create a folder named `hover-annotations`.
 4. Paste the downloaded files into this folder.
