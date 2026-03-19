@@ -345,13 +345,6 @@ body .ob-annotation-tooltip tr:nth-child(even) {
     margin-top: 0;
 }
 
-.annotation-modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    margin-top: 20px;
-}
-
 @media (max-width: 768px) {
     .ob-annotation-modal-container {
         max-width: 92vw !important;
@@ -396,11 +389,11 @@ body .ob-annotation-tooltip tr:nth-child(even) {
         height: 24px;
     }
 
-    .annotation-modal-actions {
+    .modal-button-container.inline {
         width: 100%;
     }
 
-    .annotation-modal-actions button {
+    .modal-button-container.inline button {
         flex: 1 1 0;
         min-width: 0;
     }

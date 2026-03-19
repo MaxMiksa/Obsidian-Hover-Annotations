@@ -1091,6 +1091,7 @@ var AnnotationModal = class extends import_obsidian.Modal {
     });
     const colorRow = colorWrapper.createDiv({ cls: "annotation-color-row" });
     const colorContainer = colorRow.createDiv({ cls: "annotation-color-container" });
+    const btnContainer = colorRow.createDiv({ cls: "modal-button-container inline" });
     COLOR_OPTIONS.forEach((opt) => {
       const colorLabel = this.translate(opt.labelKey);
       const colorItem = colorContainer.createDiv({
@@ -1118,7 +1119,8 @@ var AnnotationModal = class extends import_obsidian.Modal {
       });
     });
     inputEl.addEventListener("keydown", (e) => this.handleInputKeydown(e, inputEl, adjustHeight));
-    const btnContainer = contentEl.createDiv({ cls: "annotation-modal-actions" });
+    const cancelBtn = btnContainer.createEl("button", { text: this.translate("modalCancel") });
+    cancelBtn.addEventListener("click", () => this.close());
     const submitBtn = btnContainer.createEl("button", { text: this.translate("modalConfirm"), cls: "mod-cta" });
     submitBtn.addEventListener("click", () => {
       this.submit(inputEl.value);

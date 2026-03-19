@@ -1358,6 +1358,7 @@ class AnnotationModal extends Modal {
 
 		const colorRow = colorWrapper.createDiv({ cls: "annotation-color-row" });
 		const colorContainer = colorRow.createDiv({ cls: "annotation-color-container" });
+		const btnContainer = colorRow.createDiv({ cls: "modal-button-container inline" });
 
 		// 渲染颜色选项圆点
 		COLOR_OPTIONS.forEach(opt => {
@@ -1398,8 +1399,6 @@ class AnnotationModal extends Modal {
 		});
 
 		inputEl.addEventListener("keydown", (e) => this.handleInputKeydown(e, inputEl, adjustHeight));
-
-		const btnContainer = contentEl.createDiv({ cls: "annotation-modal-actions" });
 
 		// 确定按钮
 		const submitBtn = btnContainer.createEl("button", { text: this.translate('modalConfirm'), cls: "mod-cta" });
