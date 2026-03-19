@@ -1400,10 +1400,6 @@ class AnnotationModal extends Modal {
 
 		inputEl.addEventListener("keydown", (e) => this.handleInputKeydown(e, inputEl, adjustHeight));
 
-		// 取消按钮
-		const cancelBtn = btnContainer.createEl("button", { text: this.translate('modalCancel') });
-		cancelBtn.addEventListener("click", () => this.close());
-
 		// 确定按钮
 		const submitBtn = btnContainer.createEl("button", { text: this.translate('modalConfirm'), cls: "mod-cta" });
 		submitBtn.addEventListener("click", () => {
