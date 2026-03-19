@@ -24,10 +24,10 @@ The plugin is called **Hover Annotations**: It allows you to **automatically hid
 | **👓 Immersive Editing** | Automatically hides verbose HTML tags (`<span...>`) in Edit Mode, showing only an underline; source reveals on cursor hover. |
 | **🎨 Colorful Annotations** | Supports 8 colors (Red, Blue, etc.) with a visual picker and right-click preview. |
 | **📝 Markdown Support** | Tooltips perfectly render **Markdown Tables**, bold, italics, links, code blocks, etc. |
-| **📱 Mobile Support** | Click on annotated text on mobile devices to view the note. |
-| **🚀 Efficiency** | Bind hotkeys to specific colors; toggle visibility of all annotations for clean reading. |
+| **📱 Mobile Support** | Click on annotated text on mobile devices to view the note, with a more compact mobile-friendly editing modal. |
+| **🚀 Efficiency** | Bind hotkeys to specific colors; configure modal submit/newline keys; toggle visibility of all annotations for clean reading. |
 | **🛡️ Data Safety** | Annotations are stored as standard HTML `<span>` tags; safe even if the plugin is uninstalled. |
-| **🔧 Auto-Repair** | One-click fix for legacy data-note formatting issues. |
+| **🔧 Auto-Repair** | One-click fix for legacy data-note formatting issues, plus automatic newline normalization for unsafe raw `data-note` edits. |
 
 ## How to Use
 
@@ -39,7 +39,7 @@ The plugin is called **Hover Annotations**: It allows you to **automatically hid
 
 - **Method A: Using Shortcuts (Fastest)**
     1. Select a piece of text and press `Alt+c` (must be bound in settings).
-    2. Enter your annotation in the popup and press Enter or click "OK".  
+    2. Enter your annotation in the popup and use your configured submit/newline shortcut, or click "OK".  
 - **Method B: Using Context Menu**
     1. Right-click on the selected text.
     2. Select **"Add Annotation"** from the menu.  
