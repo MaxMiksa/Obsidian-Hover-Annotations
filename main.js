@@ -1119,8 +1119,6 @@ var AnnotationModal = class extends import_obsidian.Modal {
       });
     });
     inputEl.addEventListener("keydown", (e) => this.handleInputKeydown(e, inputEl, adjustHeight));
-    const cancelBtn = btnContainer.createEl("button", { text: this.translate("modalCancel") });
-    cancelBtn.addEventListener("click", () => this.close());
     const submitBtn = btnContainer.createEl("button", { text: this.translate("modalConfirm"), cls: "mod-cta" });
     submitBtn.addEventListener("click", () => {
       this.submit(inputEl.value);
