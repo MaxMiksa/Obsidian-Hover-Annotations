@@ -31,6 +31,68 @@ var import_obsidian = require("obsidian");
 var import_view = require("@codemirror/view");
 var import_state = require("@codemirror/state");
 
+// annotation-normalization.ts
+var COMMENT_REGEX = /<span class="ob-comment(?:\s+([\w-]+))?" data-note="([\s\S]*?)">([\s\S]*?)<\/span>/g;
+function buildAnnotationClass(color) {
+  return color ? "ob-comment " + color : "ob-comment";
+}
+function escapeDataNote(note) {
+  return note.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/'/g, "&#39;").replace(/`/g, "&#96;").replace(/\|/g, "&#124;").replace(/\r?\n/g, "&#10;");
+}
+function decodeDataNote(note) {
+  return note.replace(/&#10;/g, "\n").replace(/&#13;/g, "\r").replace(/&#96;/g, "`").replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&#124;/g, "|").replace(/&amp;/g, "&");
+}
+function normalizeAnnotationsInText(text) {
+  const { text: normalizedText, changed } = normalizeTextWithCursor(text, text.length);
+  return { text: normalizedText, changed };
+}
+function normalizeCursorInsideRawNote(rawNote, relativeOffset) {
+  const prefix = rawNote.slice(0, relativeOffset);
+  return escapeDataNote(decodeDataNote(prefix)).length;
+}
+function normalizeTextWithCursor(text, cursorOffset) {
+  COMMENT_REGEX.lastIndex = 0;
+  let result = "";
+  let lastIndex = 0;
+  let changed = false;
+  let nextCursorOffset = cursorOffset;
+  let match;
+  while ((match = COMMENT_REGEX.exec(text)) !== null) {
+    const fullMatch = match[0];
+    const colorClass = match[1] || "";
+    const rawNote = match[2];
+    const visibleText = match[3];
+    const safeNote = escapeDataNote(decodeDataNote(rawNote));
+    const replacement = `<span class="${buildAnnotationClass(colorClass)}" data-note="${safeNote}">${visibleText}</span>`;
+    const matchStart = match.index;
+    const matchEnd = matchStart + fullMatch.length;
+    const delta = replacement.length - fullMatch.length;
+    if (cursorOffset > matchEnd) {
+      nextCursorOffset += delta;
+    } else if (cursorOffset >= matchStart && cursorOffset <= matchEnd) {
+      const openingPrefix = fullMatch.indexOf('data-note="') + 'data-note="'.length;
+      const noteStart = openingPrefix;
+      const noteEnd = noteStart + rawNote.length;
+      const relativeOffset = cursorOffset - matchStart;
+      if (relativeOffset > noteStart && relativeOffset <= noteEnd) {
+        const noteRelativeOffset = relativeOffset - noteStart;
+        nextCursorOffset = matchStart + openingPrefix + normalizeCursorInsideRawNote(rawNote, noteRelativeOffset);
+      } else if (relativeOffset > noteEnd) {
+        nextCursorOffset += delta;
+      }
+    }
+    result += text.slice(lastIndex, matchStart) + replacement;
+    lastIndex = matchStart + fullMatch.length;
+    if (replacement !== fullMatch) changed = true;
+  }
+  result += text.slice(lastIndex);
+  return {
+    text: changed ? result : text,
+    changed,
+    cursorOffset: changed ? nextCursorOffset : cursorOffset
+  };
+}
+
 // modal-shortcuts.ts
 var VALID_SHORTCUTS = ["", "enter", "shift-enter", "ctrl-enter"];
 var DEFAULT_NEWLINE_SHORTCUT = "enter";
@@ -93,8 +155,9 @@ function isShortcutEvent(evt, shortcut) {
 }
 
 // main.ts
-var COMMENT_REGEX = /<span class="ob-comment(?:\s+([\w-]+))?" data-note="([\s\S]*?)">([\s\S]*?)<\/span>/g;
+var COMMENT_REGEX2 = /<span class="ob-comment(?:\s+([\w-]+))?" data-note="([\s\S]*?)">([\s\S]*?)<\/span>/g;
 var DEFAULT_COLOR = "";
+var AUTO_NORMALIZE_IDLE_MS = 900;
 var STRINGS = {
   en: {
     settingLanguageName: "Language",
@@ -179,6 +242,8 @@ var STRINGS = {
     settingSubmitShortcutDesc: "Keyboard shortcut to submit the annotation modal. None means confirm by button only.",
     settingNewlineShortcutName: "Newline shortcut",
     settingNewlineShortcutDesc: "Keyboard shortcut to insert a newline inside the annotation modal.",
+    settingAutoNormalizeName: "Auto-normalize annotation newlines",
+    settingAutoNormalizeDesc: "After editor idle and on save, convert unsafe raw newlines inside annotation data-note values to &#10;.",
     settingFontAdjustName: "Adjust font size",
     settingFontAdjustDescPrefix: "Adjust annotation font by steps (max \xB13). Current: ",
     settingFontStepDefault: "Default",
@@ -282,6 +347,8 @@ var STRINGS = {
     settingSubmitShortcutDesc: "\u4E3A\u6279\u6CE8\u5F39\u7A97\u8BBE\u7F6E\u5B8C\u6210\u5FEB\u6377\u952E\uFF1B\u9009\u62E9\u201C\u65E0\u201D\u65F6\u9700\u70B9\u51FB\u201C\u786E\u5B9A\u201D\u3002",
     settingNewlineShortcutName: "\u6362\u884C\u5FEB\u6377\u952E",
     settingNewlineShortcutDesc: "\u4E3A\u6279\u6CE8\u5F39\u7A97\u8BBE\u7F6E\u6362\u884C\u5FEB\u6377\u952E\u3002",
+    settingAutoNormalizeName: "\u81EA\u52A8\u89C4\u8303\u5316\u6279\u6CE8\u6362\u884C",
+    settingAutoNormalizeDesc: "\u5728\u7F16\u8F91\u5668\u7A7A\u95F2\u540E\u548C\u4FDD\u5B58\u65F6\uFF0C\u5C06\u6279\u6CE8 data-note \u4E2D\u4E0D\u5B89\u5168\u7684\u539F\u59CB\u6362\u884C\u8F6C\u6362\u4E3A &#10;\u3002",
     settingFontAdjustName: "\u8C03\u8282\u5B57\u4F53\u5927\u5C0F",
     settingFontAdjustDescPrefix: "\u6279\u6CE8\u5185\u5BB9\u5B57\u4F53\u6309\u6863\u4F4D\u8C03\u6574\uFF08\u6700\u591A \xB13 \u6863\uFF09\u3002 \u5F53\u524D\uFF1A",
     settingFontStepDefault: "\u9ED8\u8BA4",
@@ -327,37 +394,12 @@ var DEFAULT_SETTINGS = {
   tooltipFontScale: 100,
   submitShortcut: "",
   newlineShortcut: "enter",
+  autoNormalizeNewlines: true,
   enableMarkdown: true,
   language: "en"
 };
-function buildAnnotationClass(color) {
+function buildAnnotationClass2(color) {
   return color ? "ob-comment " + color : "ob-comment";
-}
-function escapeDataNote(note) {
-  return note.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/'/g, "&#39;").replace(/`/g, "&#96;").replace(/\|/g, "&#124;").replace(/\r?\n/g, "&#10;");
-}
-function decodeDataNote(note) {
-  return note.replace(/&#10;/g, "\n").replace(/&#13;/g, "\r").replace(/&#96;/g, "`").replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&#124;/g, "|").replace(/&amp;/g, "&");
-}
-function normalizeAnnotationsInText(text) {
-  COMMENT_REGEX.lastIndex = 0;
-  let result = "";
-  let lastIndex = 0;
-  let changed = false;
-  let match;
-  while ((match = COMMENT_REGEX.exec(text)) !== null) {
-    const fullMatch = match[0];
-    const colorClass = match[1] || "";
-    const rawNote = match[2];
-    const visibleText = match[3];
-    const safeNote = escapeDataNote(decodeDataNote(rawNote));
-    const replacement = `<span class="${buildAnnotationClass(colorClass)}" data-note="${safeNote}">${visibleText}</span>`;
-    result += text.slice(lastIndex, match.index) + replacement;
-    lastIndex = match.index + fullMatch.length;
-    if (replacement !== fullMatch) changed = true;
-  }
-  result += text.slice(lastIndex);
-  return { text: changed ? result : text, changed };
 }
 var _AnnotationPlugin = class _AnnotationPlugin extends import_obsidian.Plugin {
   constructor() {
@@ -366,6 +408,10 @@ var _AnnotationPlugin = class _AnnotationPlugin extends import_obsidian.Plugin {
     this.tooltipRenderComponent = null;
     this.tooltipRenderId = 0;
     this.tooltipLastRenderKey = null;
+    this.editorNormalizeTimer = null;
+    this.editorNormalizeFilePath = null;
+    this.isApplyingEditorNormalization = false;
+    this.vaultNormalizationGuards = /* @__PURE__ */ new Set();
     this.locale = "en";
   }
   // 记忆上次使用的颜色
@@ -533,8 +579,36 @@ var _AnnotationPlugin = class _AnnotationPlugin extends import_obsidian.Plugin {
         this.handleContextMenu(menu, editor);
       })
     );
+    this.registerEvent(
+      this.app.workspace.on("editor-change", (editor, info) => {
+        if (this.isApplyingEditorNormalization) return;
+        if (!this.settings.autoNormalizeNewlines) return;
+        const file = info.file;
+        if (!file) {
+          this.clearEditorNormalizeTimer();
+          return;
+        }
+        if (!editor.getValue().includes('data-note="')) {
+          this.clearEditorNormalizeTimer();
+          return;
+        }
+        this.scheduleEditorNormalization(editor, file);
+      })
+    );
+    this.registerEvent(
+      this.app.vault.on("modify", (file) => {
+        if (!(file instanceof import_obsidian.TFile)) return;
+        void this.normalizeModifiedFile(file);
+      })
+    );
+    this.registerEvent(
+      this.app.workspace.on("file-open", () => {
+        this.clearEditorNormalizeTimer();
+      })
+    );
   }
   onunload() {
+    this.clearEditorNormalizeTimer();
     this.unloadTooltipRenderComponent();
     if (this.tooltipEl) {
       this.tooltipEl.remove();
@@ -568,6 +642,64 @@ var _AnnotationPlugin = class _AnnotationPlugin extends import_obsidian.Plugin {
       new import_obsidian.Notice(this.t("noticeShortcutConflict"));
     }
     return normalized.changed;
+  }
+  clearEditorNormalizeTimer() {
+    if (this.editorNormalizeTimer !== null) {
+      window.clearTimeout(this.editorNormalizeTimer);
+      this.editorNormalizeTimer = null;
+    }
+    this.editorNormalizeFilePath = null;
+  }
+  applyEditorNormalization(editor) {
+    const docText = editor.getValue();
+    if (!docText.includes('data-note="')) return false;
+    const cursorOffset = editor.posToOffset(editor.getCursor());
+    const { text, changed, cursorOffset: nextCursorOffset } = normalizeTextWithCursor(docText, cursorOffset);
+    if (!changed) return false;
+    const lastLine = editor.lastLine();
+    const lastLineLen = editor.getLine(lastLine).length;
+    this.isApplyingEditorNormalization = true;
+    try {
+      editor.replaceRange(text, { line: 0, ch: 0 }, { line: lastLine, ch: lastLineLen });
+      editor.setCursor(editor.offsetToPos(nextCursorOffset));
+      return true;
+    } finally {
+      window.setTimeout(() => {
+        this.isApplyingEditorNormalization = false;
+      }, 0);
+    }
+  }
+  scheduleEditorNormalization(editor, file) {
+    this.clearEditorNormalizeTimer();
+    const scheduledFilePath = file.path;
+    this.editorNormalizeFilePath = scheduledFilePath;
+    this.editorNormalizeTimer = window.setTimeout(() => {
+      var _a;
+      this.editorNormalizeTimer = null;
+      this.editorNormalizeFilePath = null;
+      if (!this.settings.autoNormalizeNewlines) return;
+      if (((_a = this.app.workspace.getActiveFile()) == null ? void 0 : _a.path) !== scheduledFilePath) return;
+      this.applyEditorNormalization(editor);
+    }, AUTO_NORMALIZE_IDLE_MS);
+  }
+  async normalizeModifiedFile(file) {
+    if (!this.settings.autoNormalizeNewlines) return;
+    if (file.extension !== "md") return;
+    if (this.vaultNormalizationGuards.has(file.path)) return;
+    const original = await this.app.vault.read(file);
+    const normalized = normalizeAnnotationsInText(original);
+    if (!normalized.changed) return;
+    this.vaultNormalizationGuards.add(file.path);
+    try {
+      await this.app.vault.modify(file, normalized.text);
+    } finally {
+      window.setTimeout(() => {
+        this.vaultNormalizationGuards.delete(file.path);
+      }, 0);
+    }
+    if (this.editorNormalizeFilePath === file.path) {
+      this.clearEditorNormalizeTimer();
+    }
   }
   isIconOnlyMode() {
     return this.settings.enableIcon && !this.settings.enableUnderline && !this.settings.enableBackground;
@@ -630,7 +762,7 @@ var _AnnotationPlugin = class _AnnotationPlugin extends import_obsidian.Plugin {
     if (existing) {
       new AnnotationModal(this.app, existing.note, existing.color || DEFAULT_COLOR, (newNote, newColor) => {
         const safeNote = escapeDataNote(newNote);
-        const replacement = `<span class="${buildAnnotationClass(newColor)}" data-note="${safeNote}">${existing.text}</span>`;
+        const replacement = `<span class="${buildAnnotationClass2(newColor)}" data-note="${safeNote}">${existing.text}</span>`;
         editor.replaceRange(replacement, existing.from, existing.to);
       }, this.locale, this.t.bind(this), this.settings.submitShortcut, this.settings.newlineShortcut).open();
     } else {
@@ -677,7 +809,7 @@ var _AnnotationPlugin = class _AnnotationPlugin extends import_obsidian.Plugin {
           const colorLabel = this.getColorLabel(opt.labelKey);
           subMenu.addItem((subItem) => {
             subItem.setTitle(colorLabel).setIcon(iconId).onClick(() => {
-              const replacement = `<span class="${buildAnnotationClass(opt.value)}" data-note="${escapeDataNote(existingAnnotation.note)}">${existingAnnotation.text}</span>`;
+              const replacement = `<span class="${buildAnnotationClass2(opt.value)}" data-note="${escapeDataNote(existingAnnotation.note)}">${existingAnnotation.text}</span>`;
               editor.replaceRange(replacement, existingAnnotation.from, existingAnnotation.to);
             });
           });
@@ -723,7 +855,7 @@ var _AnnotationPlugin = class _AnnotationPlugin extends import_obsidian.Plugin {
     new AnnotationModal(this.app, "", initialColor, (noteContent, colorChoice) => {
       _AnnotationPlugin.lastUsedColor = colorChoice;
       const safeNote = escapeDataNote(noteContent);
-      const replacement = `<span class="${buildAnnotationClass(colorChoice)}" data-note="${safeNote}">${selectionText}</span>`;
+      const replacement = `<span class="${buildAnnotationClass2(colorChoice)}" data-note="${safeNote}">${selectionText}</span>`;
       editor.replaceSelection(replacement);
     }, this.locale, this.t.bind(this), this.settings.submitShortcut, this.settings.newlineShortcut).open();
   }
@@ -734,9 +866,9 @@ var _AnnotationPlugin = class _AnnotationPlugin extends import_obsidian.Plugin {
     const cursor = editor.getCursor();
     const cursorOffset = editor.posToOffset(cursor);
     const docText = editor.getValue();
-    COMMENT_REGEX.lastIndex = 0;
+    COMMENT_REGEX2.lastIndex = 0;
     let match;
-    while ((match = COMMENT_REGEX.exec(docText)) !== null) {
+    while ((match = COMMENT_REGEX2.exec(docText)) !== null) {
       const fullMatch = match[0];
       const colorClass = match[1] || "";
       const noteContent = match[2];
@@ -816,16 +948,16 @@ var _AnnotationPlugin = class _AnnotationPlugin extends import_obsidian.Plugin {
    */
   normalizeCurrentFileAnnotations(editor) {
     const docText = editor.getValue();
-    const { text, changed } = normalizeAnnotationsInText(docText);
+    const cursorOffset = editor.posToOffset(editor.getCursor());
+    const { text, changed, cursorOffset: nextCursorOffset } = normalizeTextWithCursor(docText, cursorOffset);
     if (!changed) {
       new import_obsidian.Notice(this.t("noticeNoFixNeeded"));
       return;
     }
-    const cursor = editor.getCursor();
     const lastLine = editor.lastLine();
     const lastLineLen = editor.getLine(lastLine).length;
     editor.replaceRange(text, { line: 0, ch: 0 }, { line: lastLine, ch: lastLineLen });
-    editor.setCursor(cursor);
+    editor.setCursor(editor.offsetToPos(nextCursorOffset));
     new import_obsidian.Notice(this.t("noticeFixedCurrent"));
   }
   /**
@@ -1017,6 +1149,10 @@ var AnnotationSettingTab = class extends import_obsidian.PluginSettingTab {
       await this.plugin.saveSettings();
     }));
     new import_obsidian.Setting(containerEl).setName(t("settingsAdvanced")).setHeading();
+    new import_obsidian.Setting(containerEl).setName(t("settingAutoNormalizeName")).setDesc(t("settingAutoNormalizeDesc")).addToggle((toggle) => toggle.setValue(this.plugin.settings.autoNormalizeNewlines).onChange(async (value) => {
+      this.plugin.settings.autoNormalizeNewlines = value;
+      await this.plugin.saveSettings();
+    }));
     new import_obsidian.Setting(containerEl).setName(t("settingFixDataName")).setDesc(t("settingFixDataDesc")).addButton((button) => button.setButtonText(t("settingFixDataButton")).onClick(async () => {
       await this.plugin.normalizeAllMarkdownFiles();
     }));
@@ -1205,8 +1341,8 @@ var livePreviewAnnotationPlugin = import_view.ViewPlugin.fromClass(class {
     const cursorFrom = selection.from;
     const cursorTo = selection.to;
     let match;
-    COMMENT_REGEX.lastIndex = 0;
-    while ((match = COMMENT_REGEX.exec(text)) !== null) {
+    COMMENT_REGEX2.lastIndex = 0;
+    while ((match = COMMENT_REGEX2.exec(text)) !== null) {
       const fullMatch = match[0];
       const colorClass = match[1] || "";
       const noteContent = match[2];
@@ -1225,7 +1361,7 @@ var livePreviewAnnotationPlugin = import_view.ViewPlugin.fromClass(class {
       if (isCursorInside) continue;
       builder.add(openingTagFrom, openingTagTo, import_view.Decoration.replace({}));
       builder.add(contentFrom, contentTo, import_view.Decoration.mark({
-        class: buildAnnotationClass(colorClass),
+        class: buildAnnotationClass2(colorClass),
         attributes: { "data-note": noteText }
       }));
       builder.add(closingTagFrom, closingTagTo, import_view.Decoration.replace({}));
