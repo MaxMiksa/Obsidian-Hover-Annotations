@@ -291,6 +291,7 @@ body .ob-annotation-tooltip tr:nth-child(even) {
 
 .annotation-header-row h2 {
     margin: 0;
+    flex: 0 1 auto;
 }
 
 .annotation-color-row {
@@ -317,6 +318,7 @@ body .ob-annotation-tooltip tr:nth-child(even) {
     transition: all 0.2s ease;
     resize: none; /* Disable manual resize since we use auto-resize */
     overflow-y: hidden; /* Hide scrollbar for auto-resize */
+    min-height: 5.5em;
 }
 
 .annotation-input:focus {
@@ -341,6 +343,60 @@ body .ob-annotation-tooltip tr:nth-child(even) {
     gap: 10px;
     justify-content: flex-end;
     margin-top: 0;
+}
+
+@media (max-width: 768px) {
+    .ob-annotation-modal-container {
+        max-width: 92vw !important;
+    }
+
+    .annotation-header-row {
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .annotation-header-row h2 {
+        flex-shrink: 0;
+        white-space: nowrap;
+        line-height: 1.1;
+    }
+
+    .annotation-key-hint {
+        flex: 1 1 auto;
+        font-size: 0.82em;
+        line-height: 1.25;
+    }
+
+    .annotation-input {
+        min-height: 8.5em;
+    }
+
+    .annotation-color-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 16px;
+    }
+
+    .annotation-color-container {
+        width: 100%;
+        flex-wrap: nowrap;
+        justify-content: space-between;
+        gap: 6px;
+    }
+
+    .annotation-color-item {
+        width: 24px;
+        height: 24px;
+    }
+
+    .modal-button-container.inline {
+        width: 100%;
+    }
+
+    .modal-button-container.inline button {
+        flex: 1 1 0;
+        min-width: 0;
+    }
 }
 
 /* ==========================================================================

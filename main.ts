@@ -1,6 +1,7 @@
 ﻿import { App, Component, Editor, MarkdownView, Modal, Plugin, Menu, MenuItem, Notice, addIcon, MarkdownRenderer, TFile, PluginSettingTab, Setting } from 'obsidian';
 import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate } from "@codemirror/view";
 import { RangeSetBuilder } from "@codemirror/state";
+import { formatModalKeyHint, getShortcutLabel, isShortcutEvent, normalizeShortcutSettings, type ModalShortcut } from "./modal-shortcuts";
 
 type AnnotationColor = string;
 type IconTooltipTrigger = 'hover' | 'click';
@@ -49,6 +50,7 @@ const STRINGS = {
 		noticeNeedSelectionAdd: "Please select text to add a new annotation",
 		noticeCopied: "Annotations copied to clipboard!",
 		noticeOpenDoc: "Please open a Markdown document first",
+		noticeShortcutConflict: "Submit shortcut can't match newline shortcut. Submit shortcut has been reset to None.",
 
 		ctxAdd: "Add Annotation",
 		ctxEdit: "Edit Annotation",
@@ -58,10 +60,16 @@ const STRINGS = {
 		modalTitleEdit: "Edit Annotation",
 		modalTitleNew: "Enter Annotation Content",
 		modalColorLabel: "Annotation Color",
-		modalKeyHint: "Enter: submit annotation; Shift+Enter: newline",
 		modalCancel: "Cancel",
 		modalConfirm: "Confirm",
 		modalColorCurrent: "Current color: ",
+		modalShortcutNone: "None",
+		modalShortcutEnter: "Enter",
+		modalShortcutShiftEnter: "Shift+Enter",
+		modalShortcutCtrlEnter: "Ctrl+Enter",
+		modalHintSubmitPrefix: "Submit: ",
+		modalHintNewlinePrefix: "Newline: ",
+		modalHintSeparator: "; ",
 
 			batchTitle: "⚠️ Batch fix confirmation",
 			batchSummary: (count: number) => `Found ${count} file(s) with legacy or unsafe annotations.`,
@@ -94,6 +102,10 @@ const STRINGS = {
 			settingDarkOpacityDesc: "Adjust highlight depth for dark themes (0% - 100%).",
 		settingTooltipWidthName: "Tooltip max width",
 		settingTooltipWidthDesc: "Limit tooltip width (px).",
+		settingSubmitShortcutName: "Submit shortcut",
+		settingSubmitShortcutDesc: "Keyboard shortcut to submit the annotation modal. None means confirm by button only.",
+		settingNewlineShortcutName: "Newline shortcut",
+		settingNewlineShortcutDesc: "Keyboard shortcut to insert a newline inside the annotation modal.",
 		settingFontAdjustName: "Adjust font size",
 		settingFontAdjustDescPrefix: "Adjust annotation font by steps (max ±3). Current: ",
 		settingFontStepDefault: "Default",
@@ -151,6 +163,7 @@ const STRINGS = {
 		noticeNeedSelectionAdd: "请先选择文本以添加新批注",
 		noticeCopied: "批注已复制到剪贴板！",
 		noticeOpenDoc: "请先打开一个 Markdown 文档",
+		noticeShortcutConflict: "完成批注快捷键不能与换行快捷键相同，已自动重置为“无”。",
 
 		ctxAdd: "添加批注",
 		ctxEdit: "编辑批注",
@@ -160,10 +173,16 @@ const STRINGS = {
 		modalTitleEdit: "编辑批注",
 		modalTitleNew: "输入批注内容",
 		modalColorLabel: "批注颜色",
-		modalKeyHint: "Enter：完成批注；Shift+Enter：换行",
 		modalCancel: "取消",
 		modalConfirm: "确定",
 		modalColorCurrent: "当前颜色：",
+		modalShortcutNone: "无",
+		modalShortcutEnter: "Enter",
+		modalShortcutShiftEnter: "Shift+Enter",
+		modalShortcutCtrlEnter: "Ctrl+Enter",
+		modalHintSubmitPrefix: "完成批注：",
+		modalHintNewlinePrefix: "换行：",
+		modalHintSeparator: "；",
 
 		batchTitle: "⚠️ 批量修复确认",
 		batchSummary: (count: number) => `扫描发现共有 ${count} 个文件包含旧格式或需要规范化的批注。`,
@@ -196,6 +215,10 @@ const STRINGS = {
 			settingDarkOpacityDesc: "调整深色主题下高亮背景的深浅 (0% - 100%)。",
 		settingTooltipWidthName: "Tooltip 最大宽度",
 		settingTooltipWidthDesc: "限制悬浮气泡的最大宽度 (px)。",
+		settingSubmitShortcutName: "完成批注快捷键",
+		settingSubmitShortcutDesc: "为批注弹窗设置完成快捷键；选择“无”时需点击“确定”。",
+		settingNewlineShortcutName: "换行快捷键",
+		settingNewlineShortcutDesc: "为批注弹窗设置换行快捷键。",
 		settingFontAdjustName: "调节字体大小",
 		settingFontAdjustDescPrefix: "批注内容字体按档位调整（最多 ±3 档）。 当前：",
 		settingFontStepDefault: "默认",
@@ -247,6 +270,8 @@ interface SimpleHTMLAnnotationSettings {
 	darkOpacity: number;
 	tooltipWidth: number;
 	tooltipFontScale: number;
+	submitShortcut: ModalShortcut;
+	newlineShortcut: ModalShortcut;
 	enableMarkdown: boolean;
 	language: Locale;
 }
@@ -262,6 +287,8 @@ const DEFAULT_SETTINGS: SimpleHTMLAnnotationSettings = {
 	darkOpacity: 25,
 	tooltipWidth: 800,
 	tooltipFontScale: 100,
+	submitShortcut: '',
+	newlineShortcut: 'enter',
 	enableMarkdown: true,
 	language: 'en'
 }
@@ -560,10 +587,31 @@ export default class AnnotationPlugin extends Plugin {
 
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const changed = this.enforceShortcutSettings();
+		if (changed) {
+			await this.saveData(this.settings);
+		}
 	}
 
 	async saveSettings() {
+		this.enforceShortcutSettings();
 		await this.saveData(this.settings);
+	}
+
+	enforceShortcutSettings(showNotice = false): boolean {
+		const normalized = normalizeShortcutSettings({
+			submitShortcut: this.settings.submitShortcut,
+			newlineShortcut: this.settings.newlineShortcut,
+		});
+
+		this.settings.submitShortcut = normalized.submitShortcut;
+		this.settings.newlineShortcut = normalized.newlineShortcut;
+
+		if (normalized.changed && showNotice) {
+			new Notice(this.t('noticeShortcutConflict'));
+		}
+
+		return normalized.changed;
 	}
 
 	private isIconOnlyMode(): boolean {
@@ -640,7 +688,7 @@ export default class AnnotationPlugin extends Plugin {
 				const safeNote = escapeDataNote(newNote);
 				const replacement = `<span class="${buildAnnotationClass(newColor)}" data-note="${safeNote}">${existing.text}</span>`;
 				editor.replaceRange(replacement, existing.from, existing.to);
-			}, this.locale, this.t.bind(this)).open();
+			}, this.locale, this.t.bind(this), this.settings.submitShortcut, this.settings.newlineShortcut).open();
 		} else {
 			new Notice(this.t('noticeNoAnnotation'));
 		}
@@ -772,7 +820,7 @@ export default class AnnotationPlugin extends Plugin {
 			const safeNote = escapeDataNote(noteContent);
 			const replacement = `<span class="${buildAnnotationClass(colorChoice)}" data-note="${safeNote}">${selectionText}</span>`;
 			editor.replaceSelection(replacement);
-		}, this.locale, this.t.bind(this)).open();
+		}, this.locale, this.t.bind(this), this.settings.submitShortcut, this.settings.newlineShortcut).open();
 	}
 
 	/**
@@ -1105,6 +1153,38 @@ class AnnotationSettingTab extends PluginSettingTab {
 					}
 				}));
 
+		new Setting(containerEl)
+			.setName(t('settingSubmitShortcutName'))
+			.setDesc(t('settingSubmitShortcutDesc'))
+			.addDropdown(dropdown => {
+				(["", "enter", "shift-enter", "ctrl-enter"] as ModalShortcut[]).forEach(value => {
+					dropdown.addOption(value, getShortcutLabel(t, value));
+				});
+				dropdown.setValue(this.plugin.settings.submitShortcut)
+					.onChange(async (value) => {
+						this.plugin.settings.submitShortcut = value as ModalShortcut;
+						const changed = this.plugin.enforceShortcutSettings(true);
+						await this.plugin.saveSettings();
+						if (changed) this.display();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName(t('settingNewlineShortcutName'))
+			.setDesc(t('settingNewlineShortcutDesc'))
+			.addDropdown(dropdown => {
+				(["enter", "shift-enter", "ctrl-enter"] as ModalShortcut[]).forEach(value => {
+					dropdown.addOption(value, getShortcutLabel(t, value));
+				});
+				dropdown.setValue(this.plugin.settings.newlineShortcut)
+					.onChange(async (value) => {
+						this.plugin.settings.newlineShortcut = value as ModalShortcut;
+						const changed = this.plugin.enforceShortcutSettings(true);
+						await this.plugin.saveSettings();
+						if (changed) this.display();
+					});
+			});
+
 		// 调节字体大小：按档位增减，最多 ±3 档
 		const fontStepSize = 10; // 每档 10%
 		const fontStepMax = 3;
@@ -1203,12 +1283,23 @@ class AnnotationModal extends Modal {
 	defaultValue: string;
 	defaultColor: AnnotationColor;
 	selectedColor: AnnotationColor;
+	submitShortcut: ModalShortcut;
+	newlineShortcut: ModalShortcut;
 	colorLabelEl: HTMLElement | null = null; // 显示当前选中的颜色名称
 	onSubmit: (result: string, color: AnnotationColor) => void;
 	locale: Locale;
 	translate: TranslateFn;
 
-	constructor(app: App, defaultValue: string, defaultColor: AnnotationColor, onSubmit: (result: string, color: AnnotationColor) => void, locale: Locale, translate: TranslateFn) {
+	constructor(
+		app: App,
+		defaultValue: string,
+		defaultColor: AnnotationColor,
+		onSubmit: (result: string, color: AnnotationColor) => void,
+		locale: Locale,
+		translate: TranslateFn,
+		submitShortcut: ModalShortcut,
+		newlineShortcut: ModalShortcut
+	) {
 		super(app);
 		this.defaultValue = defaultValue;
 		this.defaultColor = defaultColor;
@@ -1216,6 +1307,8 @@ class AnnotationModal extends Modal {
 		this.onSubmit = onSubmit;
 		this.locale = locale;
 		this.translate = translate;
+		this.submitShortcut = submitShortcut;
+		this.newlineShortcut = newlineShortcut;
 		this.modalEl.addClass("ob-annotation-modal-container");
 	}
 
@@ -1225,7 +1318,7 @@ class AnnotationModal extends Modal {
 		headerRow.createEl("h2", { text: this.defaultValue ? this.translate('modalTitleEdit') : this.translate('modalTitleNew') });
 		headerRow.createDiv({
 			cls: "annotation-key-hint",
-			text: this.translate('modalKeyHint')
+			text: formatModalKeyHint(this.translate, this.submitShortcut, this.newlineShortcut)
 		});
 
 		const inputEl = contentEl.createEl("textarea", {
@@ -1305,16 +1398,7 @@ class AnnotationModal extends Modal {
 			});
 		});
 
-		inputEl.addEventListener("keydown", (e) => {
-			if (e.key === "Enter" && e.shiftKey) {
-				// Shift + Enter -> 换行
-				return;
-			}
-			if (e.key === "Enter") {
-				e.preventDefault();
-				this.submit(inputEl.value);
-			}
-		});
+		inputEl.addEventListener("keydown", (e) => this.handleInputKeydown(e, inputEl, adjustHeight));
 
 		// 取消按钮
 		const cancelBtn = btnContainer.createEl("button", { text: this.translate('modalCancel') });
@@ -1331,6 +1415,31 @@ class AnnotationModal extends Modal {
 		if (this.colorLabelEl) {
 			this.colorLabelEl.setText(`${this.translate('modalColorCurrent')}${label}`);
 		}
+	}
+
+	private insertNewline(inputEl: HTMLTextAreaElement, adjustHeight: () => void) {
+		const start = inputEl.selectionStart ?? inputEl.value.length;
+		const end = inputEl.selectionEnd ?? start;
+		inputEl.setRangeText("\n", start, end, "end");
+		adjustHeight();
+	}
+
+	private handleInputKeydown(e: KeyboardEvent, inputEl: HTMLTextAreaElement, adjustHeight: () => void) {
+		if (e.key !== "Enter") return;
+
+		if (isShortcutEvent(e, this.submitShortcut)) {
+			e.preventDefault();
+			this.submit(inputEl.value);
+			return;
+		}
+
+		if (isShortcutEvent(e, this.newlineShortcut)) {
+			e.preventDefault();
+			this.insertNewline(inputEl, adjustHeight);
+			return;
+		}
+
+		e.preventDefault();
 	}
 
 	submit(value: string) {

@@ -30,6 +30,69 @@ module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var import_view = require("@codemirror/view");
 var import_state = require("@codemirror/state");
+
+// modal-shortcuts.ts
+var VALID_SHORTCUTS = ["", "enter", "shift-enter", "ctrl-enter"];
+var DEFAULT_NEWLINE_SHORTCUT = "enter";
+var DEFAULT_SUBMIT_SHORTCUT = "";
+function isValidShortcut(value) {
+  return typeof value === "string" && VALID_SHORTCUTS.includes(value);
+}
+function normalizeShortcutSettings(input) {
+  const originalSubmit = input.submitShortcut;
+  const originalNewline = input.newlineShortcut;
+  const submitShortcut = isValidShortcut(originalSubmit) ? originalSubmit : DEFAULT_SUBMIT_SHORTCUT;
+  let newlineShortcut = isValidShortcut(originalNewline) && originalNewline !== "" ? originalNewline : DEFAULT_NEWLINE_SHORTCUT;
+  let nextSubmit = submitShortcut;
+  if (nextSubmit !== "" && nextSubmit === newlineShortcut) {
+    nextSubmit = DEFAULT_SUBMIT_SHORTCUT;
+  }
+  if (newlineShortcut === "") {
+    newlineShortcut = DEFAULT_NEWLINE_SHORTCUT;
+  }
+  return {
+    submitShortcut: nextSubmit,
+    newlineShortcut,
+    changed: nextSubmit !== originalSubmit || newlineShortcut !== originalNewline
+  };
+}
+function getShortcutLabel(t, shortcut) {
+  switch (shortcut) {
+    case "enter":
+      return t("modalShortcutEnter");
+    case "shift-enter":
+      return t("modalShortcutShiftEnter");
+    case "ctrl-enter":
+      return t("modalShortcutCtrlEnter");
+    default:
+      return t("modalShortcutNone");
+  }
+}
+function formatModalKeyHint(t, submitShortcut, newlineShortcut) {
+  const parts = [];
+  if (submitShortcut) {
+    parts.push(`${t("modalHintSubmitPrefix")}${getShortcutLabel(t, submitShortcut)}`);
+  }
+  parts.push(`${t("modalHintNewlinePrefix")}${getShortcutLabel(t, newlineShortcut)}`);
+  return parts.join(t("modalHintSeparator"));
+}
+function isShortcutEvent(evt, shortcut) {
+  if (!shortcut || evt.key !== "Enter" || evt.altKey) return false;
+  const shiftKey = !!evt.shiftKey;
+  const ctrlLike = !!evt.ctrlKey || !!evt.metaKey;
+  switch (shortcut) {
+    case "enter":
+      return !shiftKey && !ctrlLike;
+    case "shift-enter":
+      return shiftKey && !ctrlLike;
+    case "ctrl-enter":
+      return !shiftKey && ctrlLike;
+    default:
+      return false;
+  }
+}
+
+// main.ts
 var COMMENT_REGEX = /<span class="ob-comment(?:\s+([\w-]+))?" data-note="([\s\S]*?)">([\s\S]*?)<\/span>/g;
 var DEFAULT_COLOR = "";
 var STRINGS = {
@@ -65,6 +128,7 @@ var STRINGS = {
     noticeNeedSelectionAdd: "Please select text to add a new annotation",
     noticeCopied: "Annotations copied to clipboard!",
     noticeOpenDoc: "Please open a Markdown document first",
+    noticeShortcutConflict: "Submit shortcut can't match newline shortcut. Submit shortcut has been reset to None.",
     ctxAdd: "Add Annotation",
     ctxEdit: "Edit Annotation",
     ctxChangeColor: " - Change Color",
@@ -72,10 +136,16 @@ var STRINGS = {
     modalTitleEdit: "Edit Annotation",
     modalTitleNew: "Enter Annotation Content",
     modalColorLabel: "Annotation Color",
-    modalKeyHint: "Enter: submit annotation; Shift+Enter: newline",
     modalCancel: "Cancel",
     modalConfirm: "Confirm",
     modalColorCurrent: "Current color: ",
+    modalShortcutNone: "None",
+    modalShortcutEnter: "Enter",
+    modalShortcutShiftEnter: "Shift+Enter",
+    modalShortcutCtrlEnter: "Ctrl+Enter",
+    modalHintSubmitPrefix: "Submit: ",
+    modalHintNewlinePrefix: "Newline: ",
+    modalHintSeparator: "; ",
     batchTitle: "\u26A0\uFE0F Batch fix confirmation",
     batchSummary: (count) => `Found ${count} file(s) with legacy or unsafe annotations.`,
     batchWarning: "Fixing will update HTML (data-note escaping). Please back up your vault first.",
@@ -105,6 +175,10 @@ var STRINGS = {
     settingDarkOpacityDesc: "Adjust highlight depth for dark themes (0% - 100%).",
     settingTooltipWidthName: "Tooltip max width",
     settingTooltipWidthDesc: "Limit tooltip width (px).",
+    settingSubmitShortcutName: "Submit shortcut",
+    settingSubmitShortcutDesc: "Keyboard shortcut to submit the annotation modal. None means confirm by button only.",
+    settingNewlineShortcutName: "Newline shortcut",
+    settingNewlineShortcutDesc: "Keyboard shortcut to insert a newline inside the annotation modal.",
     settingFontAdjustName: "Adjust font size",
     settingFontAdjustDescPrefix: "Adjust annotation font by steps (max \xB13). Current: ",
     settingFontStepDefault: "Default",
@@ -157,6 +231,7 @@ var STRINGS = {
     noticeNeedSelectionAdd: "\u8BF7\u5148\u9009\u62E9\u6587\u672C\u4EE5\u6DFB\u52A0\u65B0\u6279\u6CE8",
     noticeCopied: "\u6279\u6CE8\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F\uFF01",
     noticeOpenDoc: "\u8BF7\u5148\u6253\u5F00\u4E00\u4E2A Markdown \u6587\u6863",
+    noticeShortcutConflict: "\u5B8C\u6210\u6279\u6CE8\u5FEB\u6377\u952E\u4E0D\u80FD\u4E0E\u6362\u884C\u5FEB\u6377\u952E\u76F8\u540C\uFF0C\u5DF2\u81EA\u52A8\u91CD\u7F6E\u4E3A\u201C\u65E0\u201D\u3002",
     ctxAdd: "\u6DFB\u52A0\u6279\u6CE8",
     ctxEdit: "\u7F16\u8F91\u6279\u6CE8",
     ctxChangeColor: " - \u4FEE\u6539\u989C\u8272",
@@ -164,10 +239,16 @@ var STRINGS = {
     modalTitleEdit: "\u7F16\u8F91\u6279\u6CE8",
     modalTitleNew: "\u8F93\u5165\u6279\u6CE8\u5185\u5BB9",
     modalColorLabel: "\u6279\u6CE8\u989C\u8272",
-    modalKeyHint: "Enter\uFF1A\u5B8C\u6210\u6279\u6CE8\uFF1BShift+Enter\uFF1A\u6362\u884C",
     modalCancel: "\u53D6\u6D88",
     modalConfirm: "\u786E\u5B9A",
     modalColorCurrent: "\u5F53\u524D\u989C\u8272\uFF1A",
+    modalShortcutNone: "\u65E0",
+    modalShortcutEnter: "Enter",
+    modalShortcutShiftEnter: "Shift+Enter",
+    modalShortcutCtrlEnter: "Ctrl+Enter",
+    modalHintSubmitPrefix: "\u5B8C\u6210\u6279\u6CE8\uFF1A",
+    modalHintNewlinePrefix: "\u6362\u884C\uFF1A",
+    modalHintSeparator: "\uFF1B",
     batchTitle: "\u26A0\uFE0F \u6279\u91CF\u4FEE\u590D\u786E\u8BA4",
     batchSummary: (count) => `\u626B\u63CF\u53D1\u73B0\u5171\u6709 ${count} \u4E2A\u6587\u4EF6\u5305\u542B\u65E7\u683C\u5F0F\u6216\u9700\u8981\u89C4\u8303\u5316\u7684\u6279\u6CE8\u3002`,
     batchWarning: "\u6267\u884C\u4FEE\u590D\u5C06\u66F4\u65B0\u8FD9\u4E9B\u6587\u4EF6\u4E2D\u7684 HTML \u7ED3\u6784\uFF08\u4E3B\u8981\u662F data-note \u7684\u5B89\u5168\u8F6C\u4E49\uFF09\u3002\u5EFA\u8BAE\u5148\u5907\u4EFD\u4F60\u7684 vault\u3002",
@@ -197,6 +278,10 @@ var STRINGS = {
     settingDarkOpacityDesc: "\u8C03\u6574\u6DF1\u8272\u4E3B\u9898\u4E0B\u9AD8\u4EAE\u80CC\u666F\u7684\u6DF1\u6D45 (0% - 100%)\u3002",
     settingTooltipWidthName: "Tooltip \u6700\u5927\u5BBD\u5EA6",
     settingTooltipWidthDesc: "\u9650\u5236\u60AC\u6D6E\u6C14\u6CE1\u7684\u6700\u5927\u5BBD\u5EA6 (px)\u3002",
+    settingSubmitShortcutName: "\u5B8C\u6210\u6279\u6CE8\u5FEB\u6377\u952E",
+    settingSubmitShortcutDesc: "\u4E3A\u6279\u6CE8\u5F39\u7A97\u8BBE\u7F6E\u5B8C\u6210\u5FEB\u6377\u952E\uFF1B\u9009\u62E9\u201C\u65E0\u201D\u65F6\u9700\u70B9\u51FB\u201C\u786E\u5B9A\u201D\u3002",
+    settingNewlineShortcutName: "\u6362\u884C\u5FEB\u6377\u952E",
+    settingNewlineShortcutDesc: "\u4E3A\u6279\u6CE8\u5F39\u7A97\u8BBE\u7F6E\u6362\u884C\u5FEB\u6377\u952E\u3002",
     settingFontAdjustName: "\u8C03\u8282\u5B57\u4F53\u5927\u5C0F",
     settingFontAdjustDescPrefix: "\u6279\u6CE8\u5185\u5BB9\u5B57\u4F53\u6309\u6863\u4F4D\u8C03\u6574\uFF08\u6700\u591A \xB13 \u6863\uFF09\u3002 \u5F53\u524D\uFF1A",
     settingFontStepDefault: "\u9ED8\u8BA4",
@@ -240,6 +325,8 @@ var DEFAULT_SETTINGS = {
   darkOpacity: 25,
   tooltipWidth: 800,
   tooltipFontScale: 100,
+  submitShortcut: "",
+  newlineShortcut: "enter",
   enableMarkdown: true,
   language: "en"
 };
@@ -461,9 +548,26 @@ var _AnnotationPlugin = class _AnnotationPlugin extends import_obsidian.Plugin {
   }
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const changed = this.enforceShortcutSettings();
+    if (changed) {
+      await this.saveData(this.settings);
+    }
   }
   async saveSettings() {
+    this.enforceShortcutSettings();
     await this.saveData(this.settings);
+  }
+  enforceShortcutSettings(showNotice = false) {
+    const normalized = normalizeShortcutSettings({
+      submitShortcut: this.settings.submitShortcut,
+      newlineShortcut: this.settings.newlineShortcut
+    });
+    this.settings.submitShortcut = normalized.submitShortcut;
+    this.settings.newlineShortcut = normalized.newlineShortcut;
+    if (normalized.changed && showNotice) {
+      new import_obsidian.Notice(this.t("noticeShortcutConflict"));
+    }
+    return normalized.changed;
   }
   isIconOnlyMode() {
     return this.settings.enableIcon && !this.settings.enableUnderline && !this.settings.enableBackground;
@@ -528,7 +632,7 @@ var _AnnotationPlugin = class _AnnotationPlugin extends import_obsidian.Plugin {
         const safeNote = escapeDataNote(newNote);
         const replacement = `<span class="${buildAnnotationClass(newColor)}" data-note="${safeNote}">${existing.text}</span>`;
         editor.replaceRange(replacement, existing.from, existing.to);
-      }, this.locale, this.t.bind(this)).open();
+      }, this.locale, this.t.bind(this), this.settings.submitShortcut, this.settings.newlineShortcut).open();
     } else {
       new import_obsidian.Notice(this.t("noticeNoAnnotation"));
     }
@@ -621,7 +725,7 @@ var _AnnotationPlugin = class _AnnotationPlugin extends import_obsidian.Plugin {
       const safeNote = escapeDataNote(noteContent);
       const replacement = `<span class="${buildAnnotationClass(colorChoice)}" data-note="${safeNote}">${selectionText}</span>`;
       editor.replaceSelection(replacement);
-    }, this.locale, this.t.bind(this)).open();
+    }, this.locale, this.t.bind(this), this.settings.submitShortcut, this.settings.newlineShortcut).open();
   }
   /**
    * [辅助算法] 扫描全文，判断光标是否位于某个批注 HTML 标签内部
@@ -845,6 +949,28 @@ var AnnotationSettingTab = class extends import_obsidian.PluginSettingTab {
         await this.plugin.saveSettings();
       }
     }));
+    new import_obsidian.Setting(containerEl).setName(t("settingSubmitShortcutName")).setDesc(t("settingSubmitShortcutDesc")).addDropdown((dropdown) => {
+      ["", "enter", "shift-enter", "ctrl-enter"].forEach((value) => {
+        dropdown.addOption(value, getShortcutLabel(t, value));
+      });
+      dropdown.setValue(this.plugin.settings.submitShortcut).onChange(async (value) => {
+        this.plugin.settings.submitShortcut = value;
+        const changed = this.plugin.enforceShortcutSettings(true);
+        await this.plugin.saveSettings();
+        if (changed) this.display();
+      });
+    });
+    new import_obsidian.Setting(containerEl).setName(t("settingNewlineShortcutName")).setDesc(t("settingNewlineShortcutDesc")).addDropdown((dropdown) => {
+      ["enter", "shift-enter", "ctrl-enter"].forEach((value) => {
+        dropdown.addOption(value, getShortcutLabel(t, value));
+      });
+      dropdown.setValue(this.plugin.settings.newlineShortcut).onChange(async (value) => {
+        this.plugin.settings.newlineShortcut = value;
+        const changed = this.plugin.enforceShortcutSettings(true);
+        await this.plugin.saveSettings();
+        if (changed) this.display();
+      });
+    });
     const fontStepSize = 10;
     const fontStepMax = 3;
     const clampStep = (val) => Math.min(Math.max(val, -fontStepMax), fontStepMax);
@@ -917,7 +1043,7 @@ var AnnotationSettingTab = class extends import_obsidian.PluginSettingTab {
   }
 };
 var AnnotationModal = class extends import_obsidian.Modal {
-  constructor(app, defaultValue, defaultColor, onSubmit, locale, translate) {
+  constructor(app, defaultValue, defaultColor, onSubmit, locale, translate, submitShortcut, newlineShortcut) {
     super(app);
     this.colorLabelEl = null;
     this.defaultValue = defaultValue;
@@ -926,6 +1052,8 @@ var AnnotationModal = class extends import_obsidian.Modal {
     this.onSubmit = onSubmit;
     this.locale = locale;
     this.translate = translate;
+    this.submitShortcut = submitShortcut;
+    this.newlineShortcut = newlineShortcut;
     this.modalEl.addClass("ob-annotation-modal-container");
   }
   onOpen() {
@@ -934,7 +1062,7 @@ var AnnotationModal = class extends import_obsidian.Modal {
     headerRow.createEl("h2", { text: this.defaultValue ? this.translate("modalTitleEdit") : this.translate("modalTitleNew") });
     headerRow.createDiv({
       cls: "annotation-key-hint",
-      text: this.translate("modalKeyHint")
+      text: formatModalKeyHint(this.translate, this.submitShortcut, this.newlineShortcut)
     });
     const inputEl = contentEl.createEl("textarea", {
       cls: "annotation-input",
@@ -990,15 +1118,7 @@ var AnnotationModal = class extends import_obsidian.Modal {
         }
       });
     });
-    inputEl.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && e.shiftKey) {
-        return;
-      }
-      if (e.key === "Enter") {
-        e.preventDefault();
-        this.submit(inputEl.value);
-      }
-    });
+    inputEl.addEventListener("keydown", (e) => this.handleInputKeydown(e, inputEl, adjustHeight));
     const cancelBtn = btnContainer.createEl("button", { text: this.translate("modalCancel") });
     cancelBtn.addEventListener("click", () => this.close());
     const submitBtn = btnContainer.createEl("button", { text: this.translate("modalConfirm"), cls: "mod-cta" });
@@ -1010,6 +1130,27 @@ var AnnotationModal = class extends import_obsidian.Modal {
     if (this.colorLabelEl) {
       this.colorLabelEl.setText(`${this.translate("modalColorCurrent")}${label}`);
     }
+  }
+  insertNewline(inputEl, adjustHeight) {
+    var _a, _b;
+    const start = (_a = inputEl.selectionStart) != null ? _a : inputEl.value.length;
+    const end = (_b = inputEl.selectionEnd) != null ? _b : start;
+    inputEl.setRangeText("\n", start, end, "end");
+    adjustHeight();
+  }
+  handleInputKeydown(e, inputEl, adjustHeight) {
+    if (e.key !== "Enter") return;
+    if (isShortcutEvent(e, this.submitShortcut)) {
+      e.preventDefault();
+      this.submit(inputEl.value);
+      return;
+    }
+    if (isShortcutEvent(e, this.newlineShortcut)) {
+      e.preventDefault();
+      this.insertNewline(inputEl, adjustHeight);
+      return;
+    }
+    e.preventDefault();
   }
   submit(value) {
     this.onSubmit(value, this.selectedColor);
