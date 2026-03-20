@@ -1,5 +1,12 @@
 export const COMMENT_REGEX = /<span class="ob-comment(?:\s+([\w-]+))?" data-note="([\s\S]*?)">([\s\S]*?)<\/span>/g;
 
+export type AnnotationOffsetRange = {
+	from: number;
+	to: number;
+};
+
+export type AutoNormalizeAction = "schedule" | "cancel" | "noop";
+
 function buildAnnotationClass(color: string): string {
 	return color ? "ob-comment " + color : "ob-comment";
 }
@@ -32,6 +39,41 @@ export function decodeDataNote(note: string): string {
 export function normalizeAnnotationsInText(text: string): { text: string; changed: boolean } {
 	const { text: normalizedText, changed } = normalizeTextWithCursor(text, text.length);
 	return { text: normalizedText, changed };
+}
+
+export function findAnnotationRangeAtOffset(text: string, offset: number): AnnotationOffsetRange | null {
+	COMMENT_REGEX.lastIndex = 0;
+	let match;
+
+	while ((match = COMMENT_REGEX.exec(text)) !== null) {
+		const start = match.index;
+		const end = start + match[0].length;
+		if (offset >= start && offset <= end) {
+			return { from: start, to: end };
+		}
+	}
+
+	return null;
+}
+
+export function getAutoNormalizeAction(args: {
+	previousRange: AnnotationOffsetRange | null;
+	currentRange: AnnotationOffsetRange | null;
+	selectionEmpty: boolean;
+	selectionSet: boolean;
+	docChanged: boolean;
+	hasPendingTimer: boolean;
+}): AutoNormalizeAction {
+	if (!args.selectionEmpty) return "cancel";
+	if (args.currentRange) return "cancel";
+
+	const exitedAnnotation = args.selectionSet && args.previousRange !== null;
+	if (exitedAnnotation) return "schedule";
+
+	const keepWaitingOutside = args.hasPendingTimer && (args.selectionSet || args.docChanged);
+	if (keepWaitingOutside) return "schedule";
+
+	return "noop";
 }
 
 function normalizeCursorInsideRawNote(rawNote: string, relativeOffset: number): number {

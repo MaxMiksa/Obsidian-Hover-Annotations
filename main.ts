@@ -1,7 +1,7 @@
 ﻿import { App, Component, Editor, MarkdownView, Modal, Plugin, Menu, MenuItem, Notice, addIcon, MarkdownRenderer, TFile, PluginSettingTab, Setting } from 'obsidian';
 import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate } from "@codemirror/view";
 import { RangeSetBuilder } from "@codemirror/state";
-import { decodeDataNote, escapeDataNote, normalizeAnnotationsInText, normalizeTextWithCursor } from "./annotation-normalization";
+import { decodeDataNote, escapeDataNote, findAnnotationRangeAtOffset, getAutoNormalizeAction, normalizeAnnotationsInText, normalizeTextWithCursor, type AnnotationOffsetRange } from "./annotation-normalization";
 import { formatModalKeyHint, getShortcutLabel, isShortcutEvent, normalizeShortcutSettings, type ModalShortcut } from "./modal-shortcuts";
 
 type AnnotationColor = string;
@@ -12,7 +12,7 @@ type SubmenuCapableMenuItem = MenuItem & { setSubmenu?: () => Menu };
 const COMMENT_REGEX = /<span class="ob-comment(?:\s+([\w-]+))?" data-note="([\s\S]*?)">([\s\S]*?)<\/span>/g;
 
 const DEFAULT_COLOR: AnnotationColor = "";
-const AUTO_NORMALIZE_IDLE_MS = 900;
+const AUTO_NORMALIZE_IDLE_MS = 1000;
 
 type Locale = 'en' | 'zh';
 
@@ -108,8 +108,8 @@ const STRINGS = {
 		settingSubmitShortcutDesc: "Keyboard shortcut to submit the annotation modal. None means confirm by button only.",
 		settingNewlineShortcutName: "Newline shortcut",
 		settingNewlineShortcutDesc: "Keyboard shortcut to insert a newline inside the annotation modal.",
-		settingAutoNormalizeName: "Auto-normalize annotation newlines",
-		settingAutoNormalizeDesc: "After editor idle and on save, convert unsafe raw newlines inside annotation data-note values to &#10;.",
+		settingAutoNormalizeAfterExitName: "Auto-normalize after leaving annotation source",
+		settingAutoNormalizeAfterExitDesc: "About 1 second after the cursor leaves annotation source, convert unsafe raw newlines inside annotation data-note values to &#10;.",
 		settingFontAdjustName: "Adjust font size",
 		settingFontAdjustDescPrefix: "Adjust annotation font by steps (max ±3). Current: ",
 		settingFontStepDefault: "Default",
@@ -223,8 +223,8 @@ const STRINGS = {
 		settingSubmitShortcutDesc: "为批注弹窗设置完成快捷键；选择“无”时需点击“确定”。",
 		settingNewlineShortcutName: "换行快捷键",
 		settingNewlineShortcutDesc: "为批注弹窗设置换行快捷键。",
-		settingAutoNormalizeName: "自动规范化批注换行",
-		settingAutoNormalizeDesc: "在编辑器空闲后和保存时，将批注 data-note 中不安全的原始换行转换为 &#10;。",
+		settingAutoNormalizeAfterExitName: "移出批注源码后自动规范化",
+		settingAutoNormalizeAfterExitDesc: "在光标移出批注源码约 1 秒后，将批注 data-note 中不安全的原始换行转换为 &#10;。",
 		settingFontAdjustName: "调节字体大小",
 		settingFontAdjustDescPrefix: "批注内容字体按档位调整（最多 ±3 档）。 当前：",
 		settingFontStepDefault: "默认",
@@ -278,7 +278,7 @@ interface SimpleHTMLAnnotationSettings {
 	tooltipFontScale: number;
 	submitShortcut: ModalShortcut;
 	newlineShortcut: ModalShortcut;
-	autoNormalizeNewlines: boolean;
+	autoNormalizeAfterExit: boolean;
 	enableMarkdown: boolean;
 	language: Locale;
 }
@@ -296,7 +296,7 @@ const DEFAULT_SETTINGS: SimpleHTMLAnnotationSettings = {
 	tooltipFontScale: 100,
 	submitShortcut: '',
 	newlineShortcut: 'enter',
-	autoNormalizeNewlines: true,
+	autoNormalizeAfterExit: true,
 	enableMarkdown: true,
 	language: 'en'
 }
@@ -305,16 +305,33 @@ function buildAnnotationClass(color: AnnotationColor): string {
 	return color ? "ob-comment " + color : "ob-comment";
 }
 
+let forcedExpandedAnnotationRange: AnnotationOffsetRange | null = null;
+let autoNormalizeAfterExitEnabled = true;
+
+function setForcedExpandedAnnotationRange(range: AnnotationOffsetRange | null) {
+	forcedExpandedAnnotationRange = range;
+}
+
+function setAutoNormalizeAfterExitEnabled(enabled: boolean) {
+	autoNormalizeAfterExitEnabled = enabled;
+}
+
+function isSelectionInsideRange(from: number, to: number, range: AnnotationOffsetRange) {
+	return from >= range.from && to <= range.to;
+}
+
+function getCollapsedCursorAnnotationRange(view: EditorView): AnnotationOffsetRange | null {
+	const selection = view.state.selection.main;
+	if (!selection.empty) return null;
+	return findAnnotationRangeAtOffset(view.state.doc.toString(), selection.head);
+}
+
 export default class AnnotationPlugin extends Plugin {
   settings: SimpleHTMLAnnotationSettings;
   tooltipEl: HTMLElement | null = null;
   private tooltipRenderComponent: Component | null = null;
   private tooltipRenderId = 0;
   private tooltipLastRenderKey: string | null = null;
-  private editorNormalizeTimer: number | null = null;
-  private editorNormalizeFilePath: string | null = null;
-  private isApplyingEditorNormalization = false;
-  private vaultNormalizationGuards = new Set<string>();
   locale: Locale = 'en';
   static lastUsedColor: AnnotationColor = DEFAULT_COLOR; // 记忆上次使用的颜色
 
@@ -360,6 +377,7 @@ export default class AnnotationPlugin extends Plugin {
 		await this.loadSettings();
 
 		this.locale = this.settings.language ?? 'en';
+		setAutoNormalizeAfterExitEnabled(this.settings.autoNormalizeAfterExit);
 
 		// 初始化：从设置中读取默认颜色
 		AnnotationPlugin.lastUsedColor = this.settings.defaultColor;
@@ -531,41 +549,15 @@ export default class AnnotationPlugin extends Plugin {
 		);
 
 		this.registerEvent(
-			this.app.workspace.on("editor-change", (editor: Editor, info) => {
-				if (this.isApplyingEditorNormalization) return;
-				if (!this.settings.autoNormalizeNewlines) return;
-
-				const file = info.file;
-				if (!file) {
-					this.clearEditorNormalizeTimer();
-					return;
-				}
-
-				if (!editor.getValue().includes('data-note="')) {
-					this.clearEditorNormalizeTimer();
-					return;
-				}
-
-				this.scheduleEditorNormalization(editor, file);
-			})
-		);
-
-		this.registerEvent(
-			this.app.vault.on("modify", (file) => {
-				if (!(file instanceof TFile)) return;
-				void this.normalizeModifiedFile(file);
-			})
-		);
-
-		this.registerEvent(
 			this.app.workspace.on("file-open", () => {
-				this.clearEditorNormalizeTimer();
+				setForcedExpandedAnnotationRange(null);
 			})
 		);
 	}
 
   onunload() {
-          this.clearEditorNormalizeTimer();
+          setAutoNormalizeAfterExitEnabled(false);
+          setForcedExpandedAnnotationRange(null);
           this.unloadTooltipRenderComponent();
           if (this.tooltipEl) {
                   this.tooltipEl.remove();
@@ -579,7 +571,15 @@ export default class AnnotationPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const data = await this.loadData() as Partial<SimpleHTMLAnnotationSettings> & { autoNormalizeNewlines?: boolean } | null;
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, data ?? {});
+
+		if (data && typeof data.autoNormalizeNewlines === "boolean") {
+			if (data.autoNormalizeAfterExit === undefined) {
+				this.settings.autoNormalizeAfterExit = data.autoNormalizeNewlines;
+			}
+		}
+
 		const changed = this.enforceShortcutSettings();
 		if (changed) {
 			await this.saveData(this.settings);
@@ -605,73 +605,6 @@ export default class AnnotationPlugin extends Plugin {
 		}
 
 		return normalized.changed;
-	}
-
-	private clearEditorNormalizeTimer() {
-		if (this.editorNormalizeTimer !== null) {
-			window.clearTimeout(this.editorNormalizeTimer);
-			this.editorNormalizeTimer = null;
-		}
-		this.editorNormalizeFilePath = null;
-	}
-
-	private applyEditorNormalization(editor: Editor): boolean {
-		const docText = editor.getValue();
-		if (!docText.includes('data-note="')) return false;
-
-		const cursorOffset = editor.posToOffset(editor.getCursor());
-		const { text, changed, cursorOffset: nextCursorOffset } = normalizeTextWithCursor(docText, cursorOffset);
-		if (!changed) return false;
-
-		const lastLine = editor.lastLine();
-		const lastLineLen = editor.getLine(lastLine).length;
-		this.isApplyingEditorNormalization = true;
-
-		try {
-			editor.replaceRange(text, { line: 0, ch: 0 }, { line: lastLine, ch: lastLineLen });
-			editor.setCursor(editor.offsetToPos(nextCursorOffset));
-			return true;
-		} finally {
-			window.setTimeout(() => {
-				this.isApplyingEditorNormalization = false;
-			}, 0);
-		}
-	}
-
-	private scheduleEditorNormalization(editor: Editor, file: TFile) {
-		this.clearEditorNormalizeTimer();
-		const scheduledFilePath = file.path;
-		this.editorNormalizeFilePath = scheduledFilePath;
-		this.editorNormalizeTimer = window.setTimeout(() => {
-			this.editorNormalizeTimer = null;
-			this.editorNormalizeFilePath = null;
-			if (!this.settings.autoNormalizeNewlines) return;
-			if (this.app.workspace.getActiveFile()?.path !== scheduledFilePath) return;
-			this.applyEditorNormalization(editor);
-		}, AUTO_NORMALIZE_IDLE_MS);
-	}
-
-	private async normalizeModifiedFile(file: TFile) {
-		if (!this.settings.autoNormalizeNewlines) return;
-		if (file.extension !== "md") return;
-		if (this.vaultNormalizationGuards.has(file.path)) return;
-
-		const original = await this.app.vault.read(file);
-		const normalized = normalizeAnnotationsInText(original);
-		if (!normalized.changed) return;
-
-		this.vaultNormalizationGuards.add(file.path);
-		try {
-			await this.app.vault.modify(file, normalized.text);
-		} finally {
-			window.setTimeout(() => {
-				this.vaultNormalizationGuards.delete(file.path);
-			}, 0);
-		}
-
-		if (this.editorNormalizeFilePath === file.path) {
-			this.clearEditorNormalizeTimer();
-		}
 	}
 
 	private isIconOnlyMode(): boolean {
@@ -1006,6 +939,7 @@ export default class AnnotationPlugin extends Plugin {
 		// 使用 replaceRange 替代 setValue 以保留撤销历史
 		const lastLine = editor.lastLine();
 		const lastLineLen = editor.getLine(lastLine).length;
+		setForcedExpandedAnnotationRange(findAnnotationRangeAtOffset(text, nextCursorOffset));
 		editor.replaceRange(text, { line: 0, ch: 0 }, { line: lastLine, ch: lastLineLen });
 		
 		editor.setCursor(editor.offsetToPos(nextCursorOffset));
@@ -1300,12 +1234,13 @@ class AnnotationSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName(t('settingsAdvanced')).setHeading();
 
 		new Setting(containerEl)
-			.setName(t('settingAutoNormalizeName'))
-			.setDesc(t('settingAutoNormalizeDesc'))
+			.setName(t('settingAutoNormalizeAfterExitName'))
+			.setDesc(t('settingAutoNormalizeAfterExitDesc'))
 			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.autoNormalizeNewlines)
+				.setValue(this.plugin.settings.autoNormalizeAfterExit)
 				.onChange(async (value) => {
-					this.plugin.settings.autoNormalizeNewlines = value;
+					this.plugin.settings.autoNormalizeAfterExit = value;
+					setAutoNormalizeAfterExitEnabled(value);
 					await this.plugin.saveSettings();
 				}));
 
@@ -1566,15 +1501,103 @@ class BatchFixConfirmModal extends Modal {
 // --- CodeMirror 6 扩展 (保持不变) ---
 const livePreviewAnnotationPlugin = ViewPlugin.fromClass(class {
 	decorations: DecorationSet;
+	private lastCollapsedCursorAnnotationRange: AnnotationOffsetRange | null;
+	private normalizeTimer: number | null = null;
+	private isApplyingNormalization = false;
 
 	constructor(view: EditorView) {
+		this.lastCollapsedCursorAnnotationRange = getCollapsedCursorAnnotationRange(view);
 		this.decorations = this.buildDecorations(view);
 	}
 
+	destroy() {
+		this.clearNormalizeTimer();
+	}
+
 	update(update: ViewUpdate) {
+		const currentCollapsedCursorAnnotationRange = getCollapsedCursorAnnotationRange(update.view);
+
+		if (this.isApplyingNormalization && update.docChanged) {
+			this.isApplyingNormalization = false;
+		}
+
+		if (forcedExpandedAnnotationRange && update.selectionSet && !update.docChanged) {
+			const selection = update.state.selection.main;
+			if (!isSelectionInsideRange(selection.from, selection.to, forcedExpandedAnnotationRange)) {
+				setForcedExpandedAnnotationRange(null);
+			}
+		}
+
+		this.updateAutoNormalization(update, currentCollapsedCursorAnnotationRange);
+		this.lastCollapsedCursorAnnotationRange = currentCollapsedCursorAnnotationRange;
+
 		if (update.docChanged || update.viewportChanged || update.selectionSet) {
 			this.decorations = this.buildDecorations(update.view);
 		}
+	}
+
+	private clearNormalizeTimer() {
+		if (this.normalizeTimer !== null) {
+			window.clearTimeout(this.normalizeTimer);
+			this.normalizeTimer = null;
+		}
+	}
+
+	private updateAutoNormalization(update: ViewUpdate, currentRange: AnnotationOffsetRange | null) {
+		if (!autoNormalizeAfterExitEnabled) {
+			this.clearNormalizeTimer();
+			return;
+		}
+
+		if (!update.docChanged && !update.selectionSet) return;
+
+		const selection = update.state.selection.main;
+		const action = getAutoNormalizeAction({
+			previousRange: this.lastCollapsedCursorAnnotationRange,
+			currentRange,
+			selectionEmpty: selection.empty,
+			selectionSet: update.selectionSet,
+			docChanged: update.docChanged,
+			hasPendingTimer: this.normalizeTimer !== null,
+		});
+
+		if (action === "cancel") {
+			this.clearNormalizeTimer();
+			return;
+		}
+
+		if (action === "schedule") {
+			this.scheduleNormalization(update.view);
+		}
+	}
+
+	private scheduleNormalization(view: EditorView) {
+		this.clearNormalizeTimer();
+		this.normalizeTimer = window.setTimeout(() => {
+			this.normalizeTimer = null;
+			void this.applyNormalization(view);
+		}, AUTO_NORMALIZE_IDLE_MS);
+	}
+
+	private applyNormalization(view: EditorView) {
+		if (!autoNormalizeAfterExitEnabled) return false;
+
+		const selection = view.state.selection.main;
+		if (!selection.empty) return false;
+		if (getCollapsedCursorAnnotationRange(view) !== null) return false;
+
+		const docText = view.state.doc.toString();
+		if (!docText.includes('data-note="')) return false;
+
+		const { text, changed, cursorOffset } = normalizeTextWithCursor(docText, selection.head);
+		if (!changed) return false;
+
+		this.isApplyingNormalization = true;
+		view.dispatch({
+			changes: { from: 0, to: docText.length, insert: text },
+			selection: { anchor: cursorOffset },
+		});
+		return true;
 	}
 
 	buildDecorations(view: EditorView) {
@@ -1607,8 +1630,11 @@ const livePreviewAnnotationPlugin = ViewPlugin.fromClass(class {
 
 			const isCursorInside = (cursorFrom >= startPos && cursorFrom <= endPos) || 
 								   (cursorTo >= startPos && cursorTo <= endPos);
+			const isForcedExpanded = forcedExpandedAnnotationRange !== null &&
+				startPos === forcedExpandedAnnotationRange.from &&
+				endPos === forcedExpandedAnnotationRange.to;
 
-			if (isCursorInside) continue;
+			if (isCursorInside || isForcedExpanded) continue;
 
 			builder.add(openingTagFrom, openingTagTo, Decoration.replace({}));
 			builder.add(contentFrom, contentTo, Decoration.mark({
