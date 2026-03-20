@@ -1,3 +1,27 @@
+## v2.1.0 – Cursor-Aware Annotation Normalization / 光标感知的批注规范化 (2026-03-20)
+
+## ✨ 编辑批注源码时更稳，不再被中途打断
+
+**这次更新把自动规范化的触发时机改成“离开批注源码后”，避免用户还在编辑 `data-note` 时就被自动改写和折叠打断。**
+
+| 类别 | 详细内容 |
+| :--- | :--- |
+| **更聪明的触发时机** | 自动规范化只会在光标离开批注源码并短暂停留后才执行。 |
+| **更少打断** | 当你还在 `data-note` 中连续输入时，不会再被定时器中途改写并折叠源码。 |
+| **设置更简单** | 设置中现在只保留“移出批注源码后自动规范化”，保存时保底检查已移除。 |
+
+## ✨ Smarter Timing, Less Interruption While Editing Source
+
+**This release makes auto-normalization wait until you leave annotation source, so editing inside `data-note` no longer gets interrupted by an early rewrite and collapse.**
+
+| Category | Details |
+| :--- | :--- |
+| **Smarter Trigger Timing** | Auto-normalization now runs only after the cursor leaves annotation source and stays outside briefly. |
+| **Less Interruption** | While you keep typing inside `data-note`, the plugin no longer rewrites and collapses the source mid-edit. |
+| **Simpler Settings** | Settings now keep only “Auto-normalize after leaving annotation source”; the save-time fallback was removed. |
+
+---
+
 ## v2.0.0 – Mobile Modal & Safe Newline Controls / 移动端弹窗与安全换行控制 (2026-03-19)
 
 ## ✨ 更适合移动端编辑，也更不容易把批注写坏

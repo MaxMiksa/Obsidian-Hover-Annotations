@@ -1,9 +1,26 @@
 node_modules/
+bin/
+obj/
+.vs/
+.vscode/
+*.user
+*.suo
+Archive/
 .DS_Store
+AGENTS.md
+CHAT_LOGS.md
+PROJECT.md
+PLAN_*.md
 obsidian 插件开发记录.txt
 AI_RELEASE_RULES.md
 CHANGELOG.md
 CHANGELOG-zh.md
 Design_Setting.md
+CHECKLIST.md
+Files/PRD.md
+Files/SDD.md
+Files/RELEASE_NOTES.md
+Files/CHANGELOG.md
+Files/CHANGELOG-zh.md
 
 Files/

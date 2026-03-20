@@ -27,7 +27,7 @@ The plugin is called **Hover Annotations**: It allows you to **automatically hid
 | **📱 Mobile Support** | Click on annotated text on mobile devices to view the note, with a more compact mobile-friendly editing modal. |
 | **🚀 Efficiency** | Bind hotkeys to specific colors; configure modal submit/newline keys; toggle visibility of all annotations for clean reading. |
 | **🛡️ Data Safety** | Annotations are stored as standard HTML `<span>` tags; safe even if the plugin is uninstalled. |
-| **🔧 Auto-Repair** | One-click fix for legacy data-note formatting issues, plus automatic newline normalization for unsafe raw `data-note` edits. |
+| **🔧 Auto-Repair** | One-click fix for legacy data-note formatting issues, plus optional newline normalization after you leave annotation source. |
 
 ## How to Use
 

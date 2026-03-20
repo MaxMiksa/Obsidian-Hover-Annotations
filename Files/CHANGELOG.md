@@ -1,3 +1,21 @@
+## v2.1.0 – Cursor-Aware Annotation Normalization (2026-03-20)
+
+### Feature 1: Cursor-Aware Auto-Normalization Timing
+- **Summary**: Refined annotation newline normalization so it runs only after the cursor leaves annotation source.
+- **Problem Solved**: The previous idle-after-edit behavior could rewrite `data-note` while users were still editing span source, causing the source to collapse around the cursor.
+- **Feature Details**: Unsafe raw newlines are now normalized only after the cursor exits annotation source and stays outside briefly, so editing inside `data-note` is no longer interrupted mid-flow.
+- **Technical Implementation**:
+  - Moved the primary trigger from a workspace-level editor idle hook to the live preview `ViewPlugin` update flow in `main.ts`.
+  - Added cursor-exit scheduling logic in `annotation-normalization.ts` to decide when normalization should schedule, cancel, or stay idle.
+
+### Feature 2: Simpler Normalization Controls
+- **Summary**: Simplified settings to keep only the cursor-exit normalization switch.
+- **Problem Solved**: Two different automatic repair paths made the feature harder to reason about once the root cause was narrowed down to premature rewrites during source editing.
+- **Feature Details**: Settings now expose only “Auto-normalize after leaving annotation source”; the save-time fallback path was removed, while manual repair remains available.
+- **Technical Implementation**:
+  - Removed the vault `modify` fallback path and its settings wiring from `main.ts`.
+  - Added regression coverage in `tests/annotation-normalization.test.ts` for scheduling, cancellation, and cursor-exit normalization rules.
+
 ## v2.0.0 – Mobile Modal & Safe Newline Controls (2026-03-19)
 
 ### Feature 1: Configurable Modal Shortcuts
